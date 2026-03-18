@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RosterApp - Empleados</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>body { font-family: 'Montserrat', sans-serif; }</style>
+</head>
+<body class="bg-gray-50 flex h-screen overflow-hidden">
+
+    <aside class="w-64 bg-white border-r shadow-md flex flex-col justify-between">
+        <div>
+            <div class="p-6 text-[#0062cc] text-3xl font-bold border-b text-center tracking-tight">RosterApp</div>
+            <nav class="p-4 space-y-2 mt-4">
+                <a href="#" class="block p-3 text-gray-600 hover:bg-gray-100 font-semibold transition-colors">📅 Calendario General</a>
+                <a href="#" class="block p-3 text-white bg-[#0062cc] font-semibold transition-colors">👥 Empleados</a>
+                <a href="#" class="block p-3 text-gray-600 hover:bg-gray-100 font-semibold transition-colors">⚙️ Configuración</a>
+            </nav>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-y-auto">
+        <header class="bg-white p-8 border-b shadow-sm flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Plantilla de Empleados</h1>
+                <p class="text-gray-500 mt-1">Gestiona los accesos y datos de tu equipo.</p>
+            </div>
+            <button class="bg-[#218838] hover:bg-green-700 text-white font-bold py-3 px-6 shadow-md transition-colors">
+                + NUEVO EMPLEADO
+            </button>
+        </header>
+
+        <div class="p-8">
+            <div class="bg-white shadow-lg overflow-hidden border border-gray-200">
+                <table class="min-w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-700 border-b-2 border-[#0062cc]">
+                            <th class="py-4 px-6 font-bold">Nombre Completo</th>
+                            <th class="py-4 px-6 font-bold">Correo Electrónico</th>
+                            <th class="py-4 px-6 font-bold">Rol</th>
+                            <th class="py-4 px-6 font-bold text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-600">
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="py-4 px-6 font-semibold">Juan Pérez</td>
+                            <td class="py-4 px-6">jperez@tienda.com</td>
+                            <td class="py-4 px-6"><span class="bg-gray-200 text-gray-800 py-1 px-3 text-xs font-bold uppercase tracking-wider">Empleado</span></td>
+                            <td class="py-4 px-6 text-center space-x-2">
+                                <button class="bg-[#e0a800] text-gray-900 font-bold py-1 px-3 text-sm">Editar</button>
+                                <button class="bg-red-600 text-white font-bold py-1 px-3 text-sm">Eliminar</button>
+                            </td>
+                        </tr>
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="py-4 px-6 font-semibold">Marta López García</td>
+                            <td class="py-4 px-6">mlopez@tienda.com</td>
+                            <td class="py-4 px-6"><span class="bg-[#138496] text-white py-1 px-3 text-xs font-bold uppercase tracking-wider">Admin</span></td>
+                            <td class="py-4 px-6 text-center space-x-2">
+                                <button class="bg-[#e0a800] text-gray-900 font-bold py-1 px-3 text-sm">Editar</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
