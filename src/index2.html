@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Técnico - RosterApp</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>body { font-family: 'Montserrat', sans-serif; } @media print { body { background-color: white; } .sombra-print { box-shadow: none !important; border: none; padding: 0; margin: 0; } }</style>
+</head>
+<body class="bg-gray-100 text-gray-800 py-10">
+    <div class="max-w-4xl mx-auto bg-white p-16 shadow-2xl sombra-print">
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-extrabold text-[#0062cc] tracking-tight mb-4">RosterApp</h1>
+            <div class="w-20 h-1.5 bg-[#138496] mx-auto mb-6"></div>
+            <h2 class="text-3xl font-bold text-gray-800">2. Manual Técnico</h2>
+        </div>
+        
+        <div class="bg-gray-50 p-6 rounded mb-10 border border-gray-200">
+            <h3 class="text-lg font-bold text-gray-800 mb-3">Índice</h3>
+            <ul class="space-y-1 text-gray-600 font-semibold text-sm">
+                <li>2.1. Arquitectura y Tecnologías (Stack)</li>
+                <li>2.2. Modelo Relacional de la Base de Datos</li>
+                <li>2.3. Requisitos Funcionales</li>
+                <li>2.4. Requisitos No Funcionales y Seguridad</li>
+            </ul>
+        </div>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">2.1. Arquitectura y Tecnologías</h2>
+        <p class="text-gray-600 leading-relaxed mb-4">RosterApp utiliza una arquitectura cliente-servidor moderna:</p>
+        <ul class="list-disc pl-6 text-gray-600 space-y-2 mb-6 text-justify">
+            <li><strong>Frontend:</strong> SPA desarrollada con React, JavaScript, HTML5 y Tailwind CSS v4 para garantizar agilidad y responsividad.</li>
+            <li><strong>Backend:</strong> Plataforma Supabase (PostgreSQL) para la gestión relacional de datos y el sistema de autenticación.</li>
+        </ul>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">2.2. Modelo Relacional de la Base de Datos</h2>
+        <p class="text-gray-600 leading-relaxed mb-4">El Modelo Entidad-Relación (MER) consta de tres entidades fundamentales para garantizar la normalización:</p>
+        <ul class="list-disc pl-6 text-gray-600 space-y-2 mb-6 text-justify">
+            <li><strong>Usuarios:</strong> (id_usuario, email, password, rol). El rol discrimina entre administrador y empleado.</li>
+            <li><strong>Turnos:</strong> Bloques temporales abstractos (id_turno, fecha, hora_inicio, hora_fin).</li>
+            <li><strong>Asignaciones:</strong> Tabla intermedia que resuelve la relación N:M, conteniendo las claves foráneas de Usuarios y Turnos.</li>
+        </ul>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">2.3. Requisitos Funcionales</h2>
+        <ul class="list-disc pl-6 text-gray-600 space-y-2 mb-6 text-justify">
+            <li>Autenticación segura mediante Login.</li>
+            <li>CRUD completo de empleados reservado en exclusiva para el Administrador.</li>
+            <li>Creación de turnos y asignación múltiple de trabajadores.</li>
+            <li>Visualización restringida de turnos para el perfil Empleado.</li>
+        </ul>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">2.4. Requisitos No Funcionales y Seguridad</h2>
+        <ul class="list-disc pl-6 text-gray-600 space-y-2 mb-6 text-justify">
+            <li><strong>Rendimiento:</strong> Carga rápida de vistas sin recargar el navegador completo (SPA).</li>
+            <li><strong>Usabilidad:</strong> Enfoque Mobile First, garantizando perfecta lectura en smartphones.</li>
+            <li><strong>Seguridad:</strong> Integración de Row Level Security (RLS) en Supabase impidiendo el cruce de datos privados entre empleados.</li>
+        </ul>
+    </div>
+</body>
+</html>

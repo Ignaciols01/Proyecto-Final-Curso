@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Despliegue - RosterApp</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <style>body { font-family: 'Montserrat', sans-serif; } @media print { body { background-color: white; } .sombra-print { box-shadow: none !important; border: none; padding: 0; margin: 0; } }</style>
+</head>
+<body class="bg-gray-100 text-gray-800 py-10">
+    <div class="max-w-4xl mx-auto bg-white p-16 shadow-2xl sombra-print">
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-extrabold text-[#0062cc] tracking-tight mb-4">RosterApp</h1>
+            <div class="w-20 h-1.5 bg-[#138496] mx-auto mb-6"></div>
+            <h2 class="text-3xl font-bold text-gray-800">3. Manual de Despliegue</h2>
+        </div>
+        
+        <div class="bg-gray-50 p-6 rounded mb-10 border border-gray-200">
+            <h3 class="text-lg font-bold text-gray-800 mb-3">Índice</h3>
+            <ul class="space-y-1 text-gray-600 font-semibold text-sm">
+                <li>3.1. Requisitos Previos del Sistema</li>
+                <li>3.2. Clonación e Instalación</li>
+                <li>3.3. Configuración de Entorno</li>
+                <li>3.4. Ejecución del Servidor Local</li>
+            </ul>
+        </div>
+
+        <p class="text-gray-600 leading-relaxed mb-8">Este documento detalla los pasos técnicos para descargar, configurar y ejecutar el código fuente de RosterApp en un entorno de desarrollo local.</p>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">3.1. Requisitos Previos</h2>
+        <p class="text-gray-600 leading-relaxed mb-4">El equipo anfitrión debe tener instalados los siguientes componentes:</p>
+        <ul class="list-disc pl-6 text-gray-600 space-y-2 mb-6">
+            <li><strong>Node.js</strong> (Versión LTS recomendada).</li>
+            <li><strong>Git</strong> (Para el control de versiones).</li>
+            <li><strong>Editor de código</strong> (Recomendado Visual Studio Code).</li>
+        </ul>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">3.2. Clonación e Instalación</h2>
+        <p class="text-gray-600 leading-relaxed mb-2">Abra su terminal y clone el repositorio oficial:</p>
+        <div class="bg-gray-800 text-green-400 p-4 rounded font-mono text-sm mb-4">git clone [URL_DEL_REPOSITORIO]</div>
+        
+        <p class="text-gray-600 leading-relaxed mb-2">Navegue a la carpeta del proyecto e instale las dependencias de React y Tailwind CSS:</p>
+        <div class="bg-gray-800 text-green-400 p-4 rounded font-mono text-sm mb-6">
+            cd RosterApp<br>
+            npm install
+        </div>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">3.3. Configuración de Entorno</h2>
+        <p class="text-gray-600 leading-relaxed mb-2">Cree un archivo llamado <strong>.env</strong> en la raíz del proyecto para conectar la base de datos de Supabase e inserte sus credenciales:</p>
+        <div class="bg-gray-800 text-blue-300 p-4 rounded font-mono text-sm mb-6">
+            VITE_SUPABASE_URL=https://[TU_PROYECTO].supabase.co<br>
+            VITE_SUPABASE_ANON_KEY=[TU_CLAVE_API]
+        </div>
+
+        <h2 class="text-2xl font-bold text-gray-800 mt-8 mb-3 text-[#0062cc]">3.4. Ejecución del Servidor Local</h2>
+        <p class="text-gray-600 leading-relaxed mb-2">Levante el servidor de desarrollo ejecutando el siguiente comando:</p>
+        <div class="bg-gray-800 text-green-400 p-4 rounded font-mono text-sm mb-4">npm run dev</div>
+        <p class="text-gray-600 leading-relaxed mb-6">La terminal indicará que el aplicativo estará disponible y listo para probarse en <strong>http://localhost:5173/</strong>.</p>
+    </div>
+</body>
+</html>

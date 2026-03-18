@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Usuario Avanzado - RosterApp</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+
+    <style>
+        body { font-family: 'Montserrat', sans-serif; }
+        @media print {
+            body { background-color: white; }
+            .sombra-print { box-shadow: none !important; border: none; }
+            .salto-pagina { break-before: page; }
+            .no-break { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 py-10">
+
+    <div class="max-w-5xl mx-auto bg-white p-12 md:p-20 shadow-2xl sombra-print rounded-xl border-t-8 border-[#0062cc]">
+        
+        <div class="text-center mb-20">
+            <h1 class="text-6xl font-extrabold text-[#0062cc] tracking-tight mb-6">RosterApp</h1>
+            <div class="w-32 h-2 bg-[#138496] mx-auto mb-8 text-center rounded-full"></div>
+            <h2 class="text-4xl font-bold text-gray-800 mb-4">Manual de Usuario Definitivo</h2>
+            <p class="text-xl text-gray-500">Guía operativa detallada para la gestión digital de cuadrantes y personal</p>
+        </div>
+
+        <section class="mb-16">
+            <h2 class="text-3xl font-bold text-[#0062cc] border-b-2 border-gray-200 pb-3 mb-6">1. Introducción y Requisitos del Sistema</h2>
+            <p class="text-gray-700 leading-relaxed text-lg mb-4 text-justify">
+                Bienvenido a <strong>RosterApp</strong>, la solución tecnológica de última generación para la organización de turnos laborales. Este manual ha sido estructurado para ofrecer una curva de aprendizaje mínima, permitiendo a gerentes y empleados dominar la herramienta en cuestión de minutos. El aplicativo elimina por completo la dependencia de hojas de cálculo propensas a errores humanos y centraliza toda la operativa en un entorno seguro en la nube.
+            </p>
+            <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 mt-6">
+                <h4 class="font-bold text-gray-800 mb-2">Requisitos para utilizar RosterApp:</h4>
+                <ul class="list-disc pl-6 text-gray-700 space-y-2">
+                    <li><strong>Dispositivo:</strong> Ordenador de sobremesa, portátil, tablet o smartphone (la interfaz se adapta automáticamente gracias a su diseño <em>responsive</em>).</li>
+                    <li><strong>Navegador Web:</strong> Recomendamos las versiones más recientes de Google Chrome, Mozilla Firefox, Safari o Microsoft Edge.</li>
+                    <li><strong>Conexión:</strong> Acceso a internet estable (Wi-Fi o datos móviles 4G/5G).</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="mb-16 salto-pagina">
+            <h2 class="text-3xl font-bold text-[#0062cc] border-b-2 border-gray-200 pb-3 mb-6">2. Acceso, Seguridad y Recuperación</h2>
+            <p class="text-gray-700 leading-relaxed text-lg mb-6 text-justify">
+                RosterApp protege la información de la plantilla bajo estrictos protocolos de seguridad. El acceso está restringido y cada empleado cuenta con credenciales únicas. El sistema de inicio de sesión discrimina automáticamente los niveles de permisos, dirigiendo al usuario a su panel correspondiente (Gerencia o Vista Empleado).
+            </p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start mb-8">
+                <div>
+                    <h4 class="text-xl font-bold text-gray-800 mb-4">Proceso de Autenticación:</h4>
+                    <ol class="list-decimal pl-6 text-gray-700 space-y-3 text-lg mb-8 font-medium">
+                        <li>Acceda a la URL principal de la plataforma.</li>
+                        <li>En el formulario de la derecha, introduzca su <strong>Correo electrónico</strong> asociado a su contrato laboral.</li>
+                        <li>Introduzca su <strong>Contraseña</strong> personal.</li>
+                        <li>Haga clic en el botón principal <strong>INICIAR SESIÓN</strong>.</li>
+                    </ol>
+                    
+                    <div class="bg-yellow-50 border-l-4 border-[#e0a800] p-5 rounded-r-lg shadow-sm">
+                        <h5 class="font-bold text-gray-900 mb-2">Gestión de Errores y Recuperación</h5>
+                        <p class="text-sm text-gray-800 mb-2">Si el sistema muestra el mensaje <em>"Credenciales incorrectas"</em>, verifique que no tiene activadas las mayúsculas.</p>
+                        <p class="text-sm text-gray-800">Si ha olvidado su clave, pulse sobre el enlace <strong>"¿Olvidaste tu contraseña?"</strong>. El sistema le enviará un enlace seguro a su bandeja de entrada para restablecerla en 3 sencillos pasos.</p>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center h-full flex flex-col justify-center shadow-inner">
+                    <p class="text-sm text-gray-500 mb-2 font-semibold">[Captura 1: Pantalla de Login Dividida]</p>
+                    <img src="ruta-a-tu-captura-login.jpg" alt="Pantalla de inicio de sesión" class="w-full h-auto rounded shadow-md opacity-90">
+                </div>
+            </div>
+        </section>
+
+        <section class="salto-pagina">
+            <div class="bg-gray-800 text-white p-8 rounded-t-xl shadow-lg">
+                <h2 class="text-3xl font-bold flex items-center">
+                    <span class="text-4xl mr-3">⚙️</span> Módulo de Administración (Gerencia)
+                </h2>
+                <p class="mt-3 text-gray-300 text-lg">Entorno avanzado para la toma de decisiones, control de personal y diseño de cuadrantes operativos.</p>
+            </div>
+            
+            <div class="border-x border-b border-gray-200 rounded-b-xl p-8 mb-16 shadow-sm bg-white">
+                <p class="text-gray-700 leading-relaxed text-lg mb-8 text-justify">
+                    Al acceder con privilegios de Administrador, la pantalla se divide en dos áreas clave: un <strong>menú lateral de navegación estático</strong> a la izquierda (que permite cambiar entre Calendario y Empleados sin perder el contexto) y el <strong>área de trabajo principal</strong> a la derecha, que ocupará la mayor parte de la pantalla para facilitar la visualización de datos masivos.
+                </p>
+
+                <div class="mb-14 no-break">
+                    <h3 class="text-2xl font-bold text-[#138496] mb-5 flex items-center border-b pb-2">
+                        <span class="bg-[#138496] text-white rounded-md px-3 py-1 mr-3 text-lg">3.1</span> 
+                        Dashboard y Calendario General
+                    </h3>
+                    <p class="text-gray-700 leading-relaxed text-lg mb-4 text-justify">
+                        El Calendario es el corazón de RosterApp. Muestra una vista semanal en formato de columnas. Los controles superiores le permiten viajar en el tiempo para revisar turnos pasados o planificar los meses venideros con los botones <strong>"Anterior"</strong> y <strong>"Siguiente"</strong>. El botón central <strong>"Semana Actual"</strong> le devolverá siempre al día de hoy.
+                    </p>
+                    
+                    <div class="bg-gray-50 p-5 rounded-lg border-l-4 border-[#0062cc] mb-6">
+                        <h4 class="font-bold text-gray-800 mb-3">Leyenda Visual de Turnos:</h4>
+                        <p class="text-gray-600 mb-3">La aplicación utiliza psicología del color para que pueda analizar la cobertura de la tienda en un solo vistazo:</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div class="flex items-center"><div class="w-4 h-4 bg-[#0062cc] rounded mr-2 shadow"></div><span class="text-sm font-semibold">Mañanas (Apertura)</span></div>
+                            <div class="flex items-center"><div class="w-4 h-4 bg-[#218838] rounded mr-2 shadow"></div><span class="text-sm font-semibold">Tardes (Cierre)</span></div>
+                            <div class="flex items-center"><div class="w-4 h-4 bg-[#e0a800] rounded mr-2 shadow"></div><span class="text-sm font-semibold">Turno Doble / Especial</span></div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center mt-6">
+                        <p class="text-sm text-gray-500 mb-2 font-semibold">[Captura 2: Vista del Calendario General con Turnos]</p>
+                    </div>
+                </div>
+
+                <div class="mb-14 no-break">
+                    <h3 class="text-2xl font-bold text-[#138496] mb-5 flex items-center border-b pb-2">
+                        <span class="bg-[#138496] text-white rounded-md px-3 py-1 mr-3 text-lg">3.2</span> 
+                        Control de la Plantilla de Empleados
+                    </h3>
+                    <p class="text-gray-700 leading-relaxed text-lg mb-6 text-justify">
+                        El submódulo "Empleados" presenta una tabla interactiva con el directorio completo de la empresa. Esta tabla es la única fuente de verdad para los accesos al sistema.
+                    </p>
+                    
+                    <div class="space-y-6">
+                        <div class="flex">
+                            <div class="flex-shrink-0 mt-1"><span class="bg-green-100 text-green-800 font-bold px-3 py-1 rounded shadow-sm text-sm">ALTA</span></div>
+                            <div class="ml-4">
+                                <h4 class="text-lg font-bold text-gray-800">Registrar Nuevo Personal</h4>
+                                <p class="text-gray-600 text-justify">Al pulsar el botón verde superior, se desplegará un formulario. Es obligatorio introducir el <strong>Nombre Completo</strong> (como aparecerá en los cuadrantes), un <strong>Correo Electrónico</strong> válido (que servirá como nombre de usuario) y asignar un <strong>Rol</strong> (Empleado estándar o Administrador).</p>
+                            </div>
+                        </div>
+                        <div class="flex">
+                            <div class="flex-shrink-0 mt-1"><span class="bg-yellow-100 text-yellow-800 font-bold px-3 py-1 rounded shadow-sm text-sm">EDICIÓN</span></div>
+                            <div class="ml-4">
+                                <h4 class="text-lg font-bold text-gray-800">Modificación de Perfiles</h4>
+                                <p class="text-gray-600 text-justify">El botón "Editar" permite actualizar datos obsoletos o gestionar ascensos, cambiando los permisos de visualización del trabajador en tiempo real sin que este tenga que cerrar sesión.</p>
+                            </div>
+                        </div>
+                        <div class="flex">
+                            <div class="flex-shrink-0 mt-1"><span class="bg-red-100 text-red-800 font-bold px-3 py-1 rounded shadow-sm text-sm">BAJA</span></div>
+                            <div class="ml-4">
+                                <h4 class="text-lg font-bold text-gray-800">Eliminación Segura</h4>
+                                <p class="text-gray-600 text-justify">Si un empleado finaliza su contrato, el botón "Eliminar" revocará su acceso instantáneamente. Por seguridad estructural de la base de datos, los turnos históricos que este empleado hubiera realizado se mantendrán en los registros para futuras inspecciones o auditorías, pero su perfil dejará de estar activo.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center mt-8">
+                        <p class="text-sm text-gray-500 mb-2 font-semibold">[Captura 3: Tabla de Plantilla de Empleados]</p>
+                    </div>
+                </div>
+
+                <div class="no-break">
+                    <h3 class="text-2xl font-bold text-[#138496] mb-5 flex items-center border-b pb-2">
+                        <span class="bg-[#138496] text-white rounded-md px-3 py-1 mr-3 text-lg">3.3</span> 
+                        Creación y Asignación de Turnos (Paso a Paso)
+                    </h3>
+                    <p class="text-gray-700 leading-relaxed text-lg mb-6 text-justify">
+                        Para generar la planificación operativa, haga clic en el botón principal azul <strong>+ CREAR TURNO</strong> en el dashboard. La interfaz superpondrá un recuadro focalizando la atención en el formulario de asignación:
+                    </p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                        <ul class="list-none space-y-4 text-gray-700">
+                            <li class="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                                <strong class="text-[#0062cc] block mb-1">Paso 1: Selección de Fecha</strong>
+                                Despliegue el calendario nativo y marque el día de la jornada laboral.
+                            </li>
+                            <li class="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                                <strong class="text-[#0062cc] block mb-1">Paso 2: Acotación Horaria</strong>
+                                Introduzca la Hora de Inicio y Hora de Fin. El sistema calculará internamente el bloque de tiempo.
+                            </li>
+                            <li class="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                                <strong class="text-[#0062cc] block mb-1">Paso 3: Asignación de Recursos</strong>
+                                Despliegue el selector de personal. Verá la lista de empleados activos. Haga clic en el trabajador deseado.
+                            </li>
+                            <li class="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                                <strong class="text-[#0062cc] block mb-1">Paso 4: Ejecución</strong>
+                                Pulse <strong>GUARDAR TURNO</strong>. El sistema validará los datos y pintará automáticamente el turno en la columna de la semana correspondiente.
+                            </li>
+                        </ul>
+                        
+                        <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center h-full flex flex-col justify-center shadow-inner">
+                            <p class="text-sm text-gray-500 mb-2 font-semibold">[Captura 4: Modal Flotante de Asignar Nuevo Turno]</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="salto-pagina mb-16">
+            <div class="bg-[#0062cc] text-white p-8 rounded-t-xl shadow-lg">
+                <h2 class="text-3xl font-bold flex items-center">
+                    <span class="text-4xl mr-3">📱</span> Portal del Empleado
+                </h2>
+                <p class="mt-3 text-[#e0f7fa] text-lg">Entorno de consulta personal optimizado para dispositivos móviles.</p>
+            </div>
+            
+            <div class="border-x border-b border-gray-200 rounded-b-xl p-8 shadow-sm bg-white">
+                <p class="text-gray-700 leading-relaxed text-lg mb-8 text-justify">
+                    La experiencia del empleado está radicalmente simplificada para garantizar la privacidad y la inmediatez. En el momento en que un trabajador inicia sesión, la plataforma oculta todas las herramientas de gestión administrativa y filtra la base de datos para mostrar, de forma exclusiva, los horarios que le han sido asignados explícitamente a su ID de usuario.
+                </p>
+
+                <h3 class="text-2xl font-bold text-[#138496] mb-5">Panel "Mis Próximos Turnos"</h3>
+                <p class="text-gray-700 leading-relaxed text-lg mb-6 text-justify">
+                    En lugar de un complejo calendario matricial, el empleado visualizará un elegante formato de "Lista o Feed", ideal para desplazarse verticalmente desde la pantalla de un teléfono móvil.
+                </p>
+                
+                <div class="flex flex-col md:flex-row gap-8 mb-8">
+                    <div class="flex-1 space-y-6">
+                        <div class="bg-white p-6 rounded-lg border-l-8 border-[#138496] shadow-md">
+                            <h4 class="font-bold text-gray-900 text-lg">Días Laborables</h4>
+                            <p class="text-gray-600 mt-2">Cada tarjeta muestra de forma clara el día de la semana, la etiqueta del turno (Mañana/Tarde) y, en la esquina derecha destacada en azul, la franja horaria de asistencia obligatoria junto con el recuento total de horas para que el trabajador pueda llevar su propio control.</p>
+                        </div>
+                        <div class="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300 text-center">
+                            <h4 class="font-bold text-gray-500 text-lg">Días Libres</h4>
+                            <p class="text-gray-500 mt-2">Para evitar malentendidos sobre si un día no aparece por un fallo del sistema o porque se descansa, la plataforma dibuja explícitamente bloques transparentes etiquetados como "Día Libre" para las jornadas sin asignación.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-4 text-center flex flex-col justify-center shadow-inner">
+                        <p class="text-sm text-gray-500 mb-2 font-semibold">[Captura 5: Vista Simplificada del Empleado]</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="salto-pagina">
+            <h2 class="text-3xl font-bold text-[#0062cc] border-b-2 border-gray-200 pb-3 mb-8">5. Preguntas Frecuentes (FAQ) y Soporte</h2>
+            
+            <div class="space-y-4">
+                <div class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+                    <h4 class="font-bold text-gray-800 text-lg mb-2">¿Puede un empleado ver el cuadrante de sus compañeros?</h4>
+                    <p class="text-gray-600">No. Por razones de privacidad y cumplimiento normativo de protección de datos, el rol de empleado está limitado mediante políticas RLS (Row Level Security) a consultar únicamente sus propios registros.</p>
+                </div>
+                
+                <div class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+                    <h4 class="font-bold text-gray-800 text-lg mb-2">¿Qué ocurre si asigno dos turnos a la misma persona el mismo día?</h4>
+                    <p class="text-gray-600">El sistema lo permitirá, ya que está diseñado para soportar turnos partidos (por ejemplo, trabajar unas horas por la mañana y otras por la tarde). Ambos bloques aparecerán de forma independiente en su calendario personal.</p>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+                    <h4 class="font-bold text-gray-800 text-lg mb-2">¿Cómo debo proceder si quiero dar de baja la aplicación?</h4>
+                    <p class="text-gray-600">El administrador deberá cerrar sesión y contactar con el soporte técnico o desarrollador del proyecto (Ignacio Leo Sánchez) para proceder a la eliminación de la instancia de la base de datos de la empresa.</p>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+</body>
+</html>
