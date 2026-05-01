@@ -2,108 +2,138 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const navigate = useNavigate();
+  const [view, setView] = useState<'login' | 'register' | 'forgot'>('login');
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Intento de inicio de sesión con:', email);
-    
-    // Simulación temporal: al hacer clic, te lleva directo al panel de control
     navigate('/admin/dashboard');
   };
 
-  return (
-    <div className="flex min-h-screen w-full bg-slate-50 font-sans">
-      {/* Mitad Izquierda - Panel Corporativo Modernizado */}
-      <div className="relative hidden lg:flex flex-col justify-center items-center w-1/2 bg-gradient-to-br from-[var(--color-brand-primary)] to-blue-900 text-white p-12 overflow-hidden">
-        
-        {/* Elementos decorativos abstractos (Blobs) */}
-        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-white opacity-10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-[var(--color-brand-secondary)] opacity-30 rounded-full blur-3xl pointer-events-none"></div>
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    alert('Cuenta creada con éxito.');
+    setView('login');
+  };
 
-        <div className="relative z-10 text-center flex flex-col items-center">
-          {/* Falso Logo/Icono corporativo tipo Glassmorphism */}
-          <div className="flex items-center justify-center w-24 h-24 mb-8 bg-white/10 rounded-2xl backdrop-blur-md border border-white/20 shadow-xl">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  const handleResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    alert('Enlace enviado.');
+    setView('login');
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-white dark:bg-slate-900 transition-colors duration-300">
+      
+      {/* Lado Izquierdo - Diseño Original */}
+      <div className="md:w-1/2 bg-[#1d4ed8] flex flex-col items-center justify-center p-12 text-white">
+        <div className="mb-6">
+          {/* Icono de calendario original */}
+          <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center border border-white/30">
+            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
             </svg>
           </div>
-          
-          <h1 className="text-5xl font-extrabold mb-4 tracking-tight drop-shadow-md">RosterApp</h1>
-          <p className="text-blue-100 text-lg font-light max-w-md mx-auto leading-relaxed">
-            Gestión de cuadrantes inteligente para equipos modernos. Simplifica el día a día de tu empresa.
-          </p>
         </div>
+        <h1 className="text-4xl font-extrabold mb-2">RosterApp</h1>
+        <p className="text-sm opacity-90 text-center max-w-xs leading-relaxed">
+          Gestión de cuadrantes inteligente para equipos modernos. Simplifica el día a día de tu empresa.
+        </p>
       </div>
 
-      {/* Mitad Derecha - Formulario de Acceso Refinado */}
-      <div className="flex flex-col justify-center items-center w-full lg:w-1/2 bg-white px-8 py-12 lg:px-16 relative">
-        <div className="w-full max-w-md">
-          <div className="mb-10 text-center lg:text-left">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">
-              Iniciar Sesión
-            </h2>
-            <p className="text-gray-500 text-sm">Bienvenido de nuevo, por favor introduce tus credenciales.</p>
-          </div>
+      {/* Lado Derecho - Formularios */}
+      <div className="md:w-1/2 flex items-center justify-center p-8">
+        <div className="w-full max-w-sm">
           
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wider" htmlFor="email">
-                Correo electrónico
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-gradient-to-b from-white to-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all duration-200 shadow-sm"
-                placeholder="ejemplo@empresa.com"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wider" htmlFor="password">
-                Contraseña
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-gradient-to-b from-white to-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all duration-200 shadow-sm"
-                placeholder="••••••••"
-                required
-              />
-            </div>
+          {/* VISTA: INICIAR SESIÓN */}
+          {view === 'login' && (
+            <div className="animate-fade-in">
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Iniciar Sesión</h2>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mb-8 font-medium">Bienvenido de nuevo, por favor introduce tus credenciales.</p>
 
-            <div className="flex items-center justify-between pt-2 pb-2">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-600 cursor-pointer font-medium">
-                  Recordarme
-                </label>
-              </div>
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Correo Electrónico</label>
+                  <input type="email" placeholder="ejemplo@empresa.com" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Contraseña</label>
+                  <input type="password" placeholder="••••••••" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                </div>
 
-              <a href="#" className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                ¿Olvidaste tu contraseña?
-              </a>
+                <div className="flex items-center justify-between text-[11px] font-medium">
+                  <label className="flex items-center text-slate-500 dark:text-slate-400 cursor-pointer">
+                    <input type="checkbox" className="mr-2 rounded border-slate-200" /> Recordarme
+                  </label>
+                  <button type="button" onClick={() => setView('forgot')} className="text-blue-600 dark:text-blue-400 hover:underline">¿Olvidaste tu contraseña?</button>
+                </div>
+
+                <button type="submit" className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-xs shadow-lg shadow-blue-200 dark:shadow-none transition-all uppercase tracking-wide">
+                  Acceder al panel
+                </button>
+              </form>
+
+              <p className="mt-8 text-center text-[11px] text-slate-400">
+                ¿No tienes una cuenta? <button onClick={() => setView('register')} className="text-blue-600 font-bold hover:underline">Regístrate aquí</button>
+              </p>
             </div>
-            
-            <button
-              type="submit"
-              className="w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 transform hover:-translate-y-0.5"
-            >
-              ACCEDER AL PANEL
-            </button>
-          </form>
+          )}
+
+          {/* VISTA: CREAR CUENTA */}
+          {view === 'register' && (
+            <div className="animate-fade-in">
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Crear Cuenta</h2>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mb-8 font-medium">Únete a RosterApp y organiza tu equipo hoy mismo.</p>
+
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Nombre Completo</label>
+                  <input type="text" placeholder="Ej: Laura Martínez" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Correo Electrónico</label>
+                  <input type="email" placeholder="ejemplo@empresa.com" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Contraseña</label>
+                    <input type="password" placeholder="••••" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Repetir</label>
+                    <input type="password" placeholder="••••" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                  </div>
+                </div>
+                <button type="submit" className="w-full bg-[#0f172a] hover:bg-black text-white font-bold py-3 rounded-lg text-xs mt-4 transition-all uppercase tracking-wide">
+                  Crear Cuenta
+                </button>
+              </form>
+              <p className="mt-6 text-center text-[11px] text-slate-400">
+                ¿Ya tienes una cuenta? <button onClick={() => setView('login')} className="text-blue-600 font-bold hover:underline">Inicia sesión</button>
+              </p>
+            </div>
+          )}
+
+          {/* VISTA: OLVIDASTE CONTRASEÑA */}
+          {view === 'forgot' && (
+            <div className="animate-fade-in">
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Recuperar Acceso</h2>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mb-8 font-medium">Introduce tu email para restablecer la contraseña.</p>
+              <form onSubmit={handleResetPassword} className="space-y-6">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Correo Electrónico</label>
+                  <input type="email" placeholder="ejemplo@empresa.com" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
+                </div>
+                <button type="submit" className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-xs transition-all uppercase tracking-wide">
+                  Enviar instrucciones
+                </button>
+              </form>
+              <button onClick={() => setView('login')} className="mt-8 w-full text-center text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest">
+                ← Volver al login
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
