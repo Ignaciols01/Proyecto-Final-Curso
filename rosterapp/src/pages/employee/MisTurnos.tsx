@@ -4,18 +4,35 @@ export default function MisTurnos() {
   const [viewMode, setViewMode] = useState<'semana' | 'mes'>('semana');
   const [currentDate, setCurrentDate] = useState(new Date());
 
+  // Lógica de fechas a prueba de balas
   const handlePrev = () => {
-    const newDate = new Date(currentDate);
-    if (viewMode === 'semana') newDate.setDate(newDate.getDate() - 7);
-    else newDate.setMonth(newDate.getMonth() - 1);
-    setCurrentDate(newDate);
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      if (viewMode === 'semana') {
+        newDate.setDate(newDate.getDate() - 7);
+      } else {
+        newDate.setDate(1); // Seguro contra bugs de meses cortos
+        newDate.setMonth(newDate.getMonth() - 1);
+      }
+      return newDate;
+    });
   };
 
   const handleNext = () => {
-    const newDate = new Date(currentDate);
-    if (viewMode === 'semana') newDate.setDate(newDate.getDate() + 7);
-    else newDate.setMonth(newDate.getMonth() + 1);
-    setCurrentDate(newDate);
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      if (viewMode === 'semana') {
+        newDate.setDate(newDate.getDate() + 7);
+      } else {
+        newDate.setDate(1); // Seguro contra bugs de meses cortos
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
   };
 
   const monthYearString = currentDate.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' }).replace('.', '');
@@ -64,7 +81,6 @@ export default function MisTurnos() {
   const monthDays = getMonthDays();
 
   return (
-    // ¡Ojo! Ya no usamos min-h-screen aquí, el Layout ya controla el alto
     <div className="bg-transparent transition-colors duration-300">
       
       <header className="bg-blue-700 dark:bg-blue-900 text-white p-4 shadow-sm rounded-xl mb-4 transition-colors duration-300">
@@ -87,41 +103,43 @@ export default function MisTurnos() {
 
           <div className="flex items-center space-x-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
             <button onClick={handlePrev} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-2 py-1.5 bg-gray-50 dark:bg-slate-700 rounded-md cursor-pointer">&lt; Ant</button>
-            <button onClick={() => setCurrentDate(new Date())} className="bg-blue-600 dark:bg-blue-500 text-white px-3 py-1.5 rounded-md shadow-sm hover:bg-blue-700 cursor-pointer">Hoy</button>
+            <button onClick={handleToday} className="bg-blue-600 dark:bg-blue-500 text-white px-3 py-1.5 rounded-md shadow-sm hover:bg-blue-700 cursor-pointer">Hoy</button>
             <button onClick={handleNext} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-2 py-1.5 bg-gray-50 dark:bg-slate-700 rounded-md cursor-pointer">Sig &gt;</button>
           </div>
         </div>
 
         {viewMode === 'semana' && (
-          <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-            {weekDays.map((dia, index) => (
-              // Altura reducida de 400px a 280px
-              <div key={index} className="flex flex-col h-auto md:h-[280px]">
-                <div className={`text-center py-2 rounded-t-lg font-bold text-xs border transition-colors duration-300 ${dia.isWeekend ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-100 dark:border-red-800/50' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 border-blue-100 dark:border-blue-800/50'}`}>
-                  {dia.name} {dia.num}
+          <div className="overflow-x-auto pb-4">
+            <div className="grid grid-cols-7 gap-3 min-w-[800px]">
+              {weekDays.map((dia, index) => (
+                <div key={index} className="flex flex-col h-[280px]">
+                  <div className={`text-center py-2 rounded-t-lg font-bold text-xs border transition-colors duration-300 ${dia.isWeekend ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-100 dark:border-red-800/50' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 border-blue-100 dark:border-blue-800/50'}`}>
+                    {dia.name} {dia.num}
+                  </div>
+                  <div className="flex-1 border-x border-b border-gray-200 dark:border-slate-700 border-dashed rounded-b-lg bg-white dark:bg-slate-800 p-2 flex items-center justify-center">
+                    <span className="text-gray-300 dark:text-slate-600 font-bold text-xs">Libre</span>
+                  </div>
                 </div>
-                <div className="flex-1 border-x border-b border-gray-200 dark:border-slate-700 border-dashed rounded-b-lg bg-white dark:bg-slate-800 p-2 flex items-center justify-center min-h-[80px]">
-                  <span className="text-gray-300 dark:text-slate-600 font-bold text-xs">Libre</span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
         {viewMode === 'mes' && (
-          <div className="grid grid-cols-7 gap-2 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-x-auto min-w-[700px]">
-            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => (
-              <div key={i} className={`text-center font-bold text-[10px] uppercase mb-2 ${i >= 5 ? 'text-red-400 dark:text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>{d}</div>
-            ))}
-            {monthDays.map((dia, i) => (
-              // Altura de celda reducida de h-28 a h-20 (80px)
-              <div key={i} className={`h-20 border border-gray-100 dark:border-slate-700 rounded-md p-2 flex flex-col transition-colors duration-300 ${dia.isCurrentMonth ? 'bg-white dark:bg-slate-800 hover:border-blue-400 dark:hover:border-blue-500' : 'bg-gray-50 dark:bg-slate-800/50 opacity-60'}`}>
-                <span className={`text-right text-xs font-bold ${dia.isCurrentMonth ? (dia.isWeekend ? 'text-red-500 dark:text-red-400' : 'text-gray-800 dark:text-gray-200') : 'text-gray-400 dark:text-slate-500'}`}>{dia.num}</span>
-                <div className="flex-1 flex items-center justify-center">
-                  {dia.isCurrentMonth && <span className="text-gray-200 dark:text-slate-600 text-[10px] font-semibold">Libre</span>}
+          <div className="overflow-x-auto pb-4">
+            <div className="grid grid-cols-7 gap-2 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm min-w-[800px]">
+              {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => (
+                <div key={i} className={`text-center font-bold text-[10px] uppercase mb-2 ${i >= 5 ? 'text-red-400 dark:text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>{d}</div>
+              ))}
+              {monthDays.map((dia, i) => (
+                <div key={i} className={`h-20 border border-gray-100 dark:border-slate-700 rounded-md p-2 flex flex-col transition-colors duration-300 ${dia.isCurrentMonth ? 'bg-white dark:bg-slate-800 hover:border-blue-400 dark:hover:border-blue-500' : 'bg-gray-50 dark:bg-slate-800/50 opacity-60'}`}>
+                  <span className={`text-right text-xs font-bold ${dia.isCurrentMonth ? (dia.isWeekend ? 'text-red-500 dark:text-red-400' : 'text-gray-800 dark:text-gray-200') : 'text-gray-400 dark:text-slate-500'}`}>{dia.num}</span>
+                  <div className="flex-1 flex items-center justify-center">
+                    {dia.isCurrentMonth && <span className="text-gray-200 dark:text-slate-600 text-[10px] font-semibold">Libre</span>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>

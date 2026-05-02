@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { useEffect } from 'react';
 
 import Login from './pages/Login';
+import NotFound from './pages/NotFound'; // Importamos la nueva página de error
 
 import DashboardLayout from './layouts/DashboardLayout';
 import EmployeeLayout from './layouts/EmployeeLayout';
@@ -44,18 +45,21 @@ const router = createBrowserRouter([
       { path: 'fichaje', element: <Fichaje /> },
       { path: 'configuracion', element: <ConfiguracionEmpleado /> }
     ]
+  },
+  // RUTA COMODÍN: Si el usuario escribe algo que no existe, muestra el Error 404
+  {
+    path: '*',
+    element: <NotFound />
   }
 ]);
 
 function App() {
-  // Este código se ejecuta nada más abrir la web para aplicar el tema a toda la app
   useEffect(() => {
     const theme = localStorage.getItem('rosterapp_theme');
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
-      // Forzamos el guardado en claro si es la primera vez que entra
       localStorage.setItem('rosterapp_theme', 'light');
     }
   }, []);
