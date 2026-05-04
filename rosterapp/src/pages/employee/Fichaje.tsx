@@ -1,24 +1,80 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 
 export default function Fichaje() {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [registroId, setRegistroId] = useState<string | null>(null);
 
-  const [horaEntrada, setHoraEntrada] = useState<Date | null>(() => {
-    const guardada = localStorage.getItem('rosterapp_entrada');
-    return guardada ? new Date(guardada) : null;
-  });
+  const [horaEntrada, setHoraEntrada] = useState<Date | null>(null);
+  const [horaSalida, setHoraSalida] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [horaSalida, setHoraSalida] = useState<Date | null>(() => {
-    const guardada = localStorage.getItem('rosterapp_salida');
-    return guardada ? new Date(guardada) : null;
-  });
+  // NUEVO ESTADO: Para guardar la suma de todas las horas históricas (en milisegundos)
+  const [historialMilisegundos, setHistorialMilisegundos] = useState<number>(0);
 
+  // Reloj en tiempo real
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Al entrar a la página, cargamos TODOS los fichajes del empleado
+  useEffect(() => {
+    cargarDatosFichajes();
+  }, []);
+
+  const cargarDatosFichajes = async () => {
+    setLoading(true);
+    const userDataString = localStorage.getItem('rosterapp_user');
+    if (!userDataString) return;
+    const user = JSON.parse(userDataString);
+
+    // Pedimos a Supabase TODOS los fichajes de este usuario ordenados por fecha
+    const { data, error } = await supabase
+      .from('fichajes')
+      .select('*')
+      .eq('id_usuario', user.id)
+      .order('hora_entrada', { ascending: false });
+
+    if (data && data.length > 0) {
+      let msAcumulados = 0;
+      let turnoAbierto = null;
+
+      // Recorremos todos los turnos para sumarlos
+      data.forEach(fichaje => {
+        if (fichaje.hora_salida) {
+          // Si el turno está cerrado, sumamos la diferencia al total histórico
+          msAcumulados += new Date(fichaje.hora_salida).getTime() - new Date(fichaje.hora_entrada).getTime();
+        } else {
+          // Si no tiene salida, es el turno que está corriendo ahora mismo
+          turnoAbierto = fichaje;
+        }
+      });
+
+      setHistorialMilisegundos(msAcumulados);
+
+      // Si hay un turno corriendo, lo mostramos en pantalla
+      if (turnoAbierto) {
+        setHoraEntrada(new Date(turnoAbierto.hora_entrada));
+        setRegistroId(turnoAbierto.id_fichaje);
+        setHoraSalida(null);
+      } else {
+        // Si no hay turno corriendo, dejamos en pantalla el último turno que completaste
+        const ultimoTurno = data[0];
+        setHoraEntrada(new Date(ultimoTurno.hora_entrada));
+        setHoraSalida(new Date(ultimoTurno.hora_salida));
+        setRegistroId(ultimoTurno.id_fichaje);
+      }
+    } else {
+      // Si no hay historial de nada
+      setHoraEntrada(null);
+      setHoraSalida(null);
+    }
+    
+    setLoading(false);
+  };
 
   const formatTimeBig = (date: Date) => {
     return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -29,47 +85,75 @@ export default function Fichaje() {
     return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleRegistrarEntrada = () => {
-    const ahora = new Date();
-    setHoraEntrada(ahora);
-    localStorage.setItem('rosterapp_entrada', ahora.toISOString());
-    
-    setHoraSalida(null);
-    localStorage.removeItem('rosterapp_salida');
+  const formatearMilisegundos = (ms: number) => {
+    const diffHrs = Math.floor(ms / (1000 * 60 * 60));
+    const diffMins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    const diffSecs = Math.floor((ms % (1000 * 60)) / 1000);
+    return `${diffHrs}h ${diffMins}m ${diffSecs}s`;
   };
 
-  const handleRegistrarSalida = () => {
+  const handleRegistrarEntrada = async () => {
+    const userDataString = localStorage.getItem('rosterapp_user');
+    if (!userDataString) return;
+    const user = JSON.parse(userDataString);
     const ahora = new Date();
-    setHoraSalida(ahora);
-    localStorage.setItem('rosterapp_salida', ahora.toISOString());
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from('fichajes')
+      .insert([{ id_usuario: user.id, hora_entrada: ahora.toISOString() }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setHoraEntrada(ahora);
+      setRegistroId(data.id_fichaje);
+      setHoraSalida(null);
+    } else {
+      alert("Error al registrar entrada: " + error?.message);
+    }
+    setLoading(false);
   };
 
-  let horasComputadas = '0h 0m 0s';
+  const handleRegistrarSalida = async () => {
+    if (!registroId) return;
+    const ahora = new Date();
+    setLoading(true);
+
+    const { error } = await supabase
+      .from('fichajes')
+      .update({ hora_salida: ahora.toISOString() })
+      .eq('id_fichaje', registroId);
+
+    if (!error) {
+      // Al salir, volvemos a descargar todo de Supabase para que las matemáticas
+      // del total histórico sean 100% exactas y no haya fallos visuales.
+      await cargarDatosFichajes();
+    } else {
+      alert("Error al registrar salida: " + error.message);
+    }
+    setLoading(false);
+  };
+
+  // --- MATEMÁTICAS DE LOS CONTADORES ---
+  let turnoActualMs = 0;
   if (horaEntrada) {
     const timeEnd = horaSalida ? horaSalida.getTime() : currentTime.getTime();
-    const diffMs = Math.max(0, timeEnd - horaEntrada.getTime());
-    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    const diffSecs = Math.floor((diffMs % (1000 * 60)) / 1000);
-    horasComputadas = `${diffHrs}h ${diffMins}m ${diffSecs}s`;
+    turnoActualMs = Math.max(0, timeEnd - horaEntrada.getTime());
   }
+
+  // 1. Horas de la tarjeta azul (El turno que estás viendo)
+  const horasComputadasTurno = formatearMilisegundos(turnoActualMs);
+  
+  // 2. Horas de la tarjeta morada (El total histórico de tu vida en la empresa)
+  // Si estás trabajando (horaSalida es null), le sumamos en tiempo real el turno actual al histórico.
+  const totalMs = horaSalida ? historialMilisegundos : historialMilisegundos + turnoActualMs;
+  const horasTotalesAcumuladas = formatearMilisegundos(totalMs);
+
+  const hayTurnoActivo = horaEntrada !== null && horaSalida === null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 pb-10 transition-colors duration-300">
-      
-      <header className="bg-blue-700 dark:bg-blue-900 text-white p-6 shadow-md rounded-b-3xl transition-colors duration-300">
-        <div className="flex justify-between items-center mb-4 max-w-6xl mx-auto">
-          <h1 className="text-2xl font-extrabold tracking-tight">RosterApp</h1>
-          <button className="text-sm font-bold bg-blue-800 dark:bg-blue-950 hover:bg-blue-900 px-4 py-2 rounded-full transition-colors cursor-pointer">
-            SALIR
-          </button>
-        </div>
-        <div className="max-w-6xl mx-auto">
-          <p className="text-blue-200 dark:text-blue-300 text-sm font-medium">Hola, bienvenido</p>
-          <p className="text-xl font-bold">Control Horario</p>
-        </div>
-      </header>
-
       <div className="p-6 max-w-4xl mx-auto mt-6">
         
         <div className="text-center mb-10">
@@ -88,9 +172,9 @@ export default function Fichaje() {
             <div className="w-full max-w-xs flex flex-col gap-3">
               <button 
                 onClick={handleRegistrarEntrada}
-                disabled={horaEntrada !== null}
+                disabled={hayTurnoActivo || loading}
                 className={`py-3.5 px-6 rounded-xl font-bold text-sm transition-all shadow-sm ${
-                  !horaEntrada 
+                  !hayTurnoActivo && !loading
                     ? 'bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white cursor-pointer hover:shadow-md transform hover:-translate-y-0.5' 
                     : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                 }`}
@@ -100,9 +184,9 @@ export default function Fichaje() {
               
               <button 
                 onClick={handleRegistrarSalida}
-                disabled={!horaEntrada || horaSalida !== null}
+                disabled={!hayTurnoActivo || loading}
                 className={`py-3.5 px-6 rounded-xl font-bold text-sm transition-all shadow-sm ${
-                  horaEntrada && !horaSalida 
+                  hayTurnoActivo && !loading
                     ? 'bg-gray-800 hover:bg-gray-900 dark:bg-slate-600 dark:hover:bg-slate-500 text-white cursor-pointer hover:shadow-md transform hover:-translate-y-0.5' 
                     : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                 }`}
@@ -113,7 +197,7 @@ export default function Fichaje() {
           </div>
 
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-8 flex-1 flex flex-col transition-colors duration-300">
-            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-6 border-b border-gray-100 dark:border-slate-700 pb-4">Resumen de Hoy</h3>
+            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-6 border-b border-gray-100 dark:border-slate-700 pb-4">Resumen del Turno</h3>
             
             <div className="space-y-4 mb-auto">
               <div className="flex justify-between items-center p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800/50 transition-colors duration-300">
@@ -137,10 +221,19 @@ export default function Fichaje() {
               </div>
             </div>
 
+            {/* CONTADOR 1: HORAS DEL TURNO EN PANTALLA */}
             <div className="mt-8 bg-blue-50 dark:bg-slate-700/50 p-5 rounded-xl border border-blue-100 dark:border-slate-600 transition-colors duration-300">
-              <p className="text-xs font-bold text-blue-400 dark:text-blue-300 uppercase tracking-widest mb-1">Horas Computadas</p>
+              <p className="text-xs font-bold text-blue-400 dark:text-blue-300 uppercase tracking-widest mb-1">Horas de este turno</p>
               <p className="text-3xl font-extrabold text-blue-700 dark:text-blue-400 font-mono">
-                {horasComputadas}
+                {horasComputadasTurno}
+              </p>
+            </div>
+
+            {/* CONTADOR 2: TOTAL HISTÓRICO DE TODAS LAS HORAS */}
+            <div className="mt-4 bg-purple-50 dark:bg-purple-900/20 p-5 rounded-xl border border-purple-100 dark:border-purple-800/50 transition-colors duration-300">
+              <p className="text-xs font-bold text-purple-500 dark:text-purple-400 uppercase tracking-widest mb-1">Total Acumulado (Histórico)</p>
+              <p className="text-3xl font-extrabold text-purple-700 dark:text-purple-400 font-mono">
+                {horasTotalesAcumuladas}
               </p>
             </div>
             

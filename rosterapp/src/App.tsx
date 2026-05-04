@@ -1,70 +1,65 @@
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
-
-import Login from './pages/Login';
-import NotFound from './pages/NotFound'; // Importamos la nueva página de error
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 import DashboardLayout from './layouts/DashboardLayout';
 import EmployeeLayout from './layouts/EmployeeLayout';
 
-import Dashboard from './pages/admin/Dashboard';
-import Empleados from './pages/admin/Empleados';
-import Informes from './pages/admin/Informes';
-import ConfiguracionAdmin from './pages/admin/Configuracion'; 
+import Login from './pages/Login';
+import NotFound from './pages/NotFound';
 
-import MisTurnos from './pages/employee/MisTurnos';
-import Fichaje from './pages/employee/Fichaje';
-import ConfiguracionEmpleado from './pages/employee/Configuracion'; 
+import AdminDashboard from './pages/admin/Dashboard';
+import AdminEmpleados from './pages/admin/Empleados';
+import AdminInformes from './pages/admin/Informes';
+import AdminConfiguracion from './pages/admin/Configuracion';
 
-const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <Navigate to="/login" replace />,
-  },
-  {
-    path: '/login',
-    element: <Login />,
-  },
-  {
-    path: '/admin',
-    element: <DashboardLayout />, 
-    children: [
-      { path: '', element: <Navigate to="dashboard" replace /> },
-      { path: 'dashboard', element: <Dashboard /> },
-      { path: 'empleados', element: <Empleados /> },
-      { path: 'informes', element: <Informes /> },
-      { path: 'configuracion', element: <ConfiguracionAdmin /> }
-    ],
-  },
-  {
-    path: '/empleado',
-    element: <EmployeeLayout />,
-    children: [
-      { path: '', element: <Navigate to="turnos" replace /> },
-      { path: 'turnos', element: <MisTurnos /> },
-      { path: 'fichaje', element: <Fichaje /> },
-      { path: 'configuracion', element: <ConfiguracionEmpleado /> }
-    ]
-  },
-  // RUTA COMODÍN: Si el usuario escribe algo que no existe, muestra el Error 404
-  {
-    path: '*',
-    element: <NotFound />
-  }
-]);
+import EmployeeMisTurnos from './pages/employee/MisTurnos';
+import EmployeeFichaje from './pages/employee/Fichaje';
+import EmployeeConfiguracion from './pages/employee/Configuracion';
 
-function App() {
-  useEffect(() => {
-    const theme = localStorage.getItem('rosterapp_theme');
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('rosterapp_theme', 'light');
-    }
-  }, []);
 
-  return <RouterProvider router={router} />;
+if (localStorage.getItem('rosterapp_theme') === 'dark') {
+  document.documentElement.classList.add('dark');
 }
 
-export default App;
+const ProtectedRoute = ({ children, allowedRole }: { children: React.ReactNode, allowedRole: string }) => {
+  const userDataString = localStorage.getItem('rosterapp_user');
+  
+  if (!userDataString) return <Navigate to="/" replace />;
+
+  const user = JSON.parse(userDataString);
+  
+  if (user.rol !== allowedRole) {
+    return user.rol === 'administrador' 
+      ? <Navigate to="/admin/dashboard" replace /> 
+      : <Navigate to="/empleado/turnos" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Login />} />
+
+        {/* ZONA ADMIN */}
+        <Route path="/admin" element={<ProtectedRoute allowedRole="administrador"><DashboardLayout /></ProtectedRoute>}>
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="empleados" element={<AdminEmpleados />} />
+          <Route path="informes" element={<AdminInformes />} />
+          <Route path="configuracion" element={<AdminConfiguracion />} />
+        </Route>
+
+        {/* ZONA EMPLEADO (Rutas corregidas para que no den 404) */}
+        <Route path="/empleado" element={<ProtectedRoute allowedRole="empleado"><EmployeeLayout /></ProtectedRoute>}>
+          <Route path="turnos" element={<EmployeeMisTurnos />} />
+          <Route path="fichaje" element={<EmployeeFichaje />} />
+          <Route path="configuracion" element={<EmployeeConfiguracion />} />
+        </Route>
+
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Router>
+  );
+}

@@ -1,185 +1,323 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 
-export default function Dashboard() {
-  const [viewMode, setViewMode] = useState<'semana' | 'mes'>('semana');
-  const [currentDate, setCurrentDate] = useState(new Date());
+export default function AdminDashboard() {
+  const [totalEmpleados, setTotalEmpleados] = useState(0);
+  const [turnosSemana, setTurnosSemana] = useState(0);
+  const [loading, setLoading] = useState(true);
+  
+  // ESTADOS DEL MODAL
+  const [showModal, setShowModal] = useState(false);
+  const [empleados, setEmpleados] = useState<{id_usuario: string, nombre: string}[]>([]);
+  const [selectedEmpleado, setSelectedEmpleado] = useState('');
+  const [tipoRepeticion, setTipoRepeticion] = useState('unico');
+  const [diasSeleccionados, setDiasSeleccionados] = useState<string[]>([]);
+  const [horaInicio, setHoraInicio] = useState('08:00');
+  const [horaFin, setHoraFin] = useState('15:00');
 
-  // Lógica de fechas a prueba de balas
-  const handlePrev = () => {
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      if (viewMode === 'semana') {
-        newDate.setDate(newDate.getDate() - 7);
-      } else {
-        newDate.setDate(1); // Seguro contra bugs de meses cortos
-        newDate.setMonth(newDate.getMonth() - 1);
+  // ESTADO DEL CALENDARIO
+  const [fechaReferencia, setFechaReferencia] = useState(new Date());
+
+  useEffect(() => {
+    fetchStats();
+    fetchEmpleados();
+  }, []);
+
+  const fetchStats = async () => {
+    setLoading(true);
+    try {
+      const { count: countEmp, error: errorEmp } = await supabase
+        .from('usuarios')
+        .select('*', { count: 'exact', head: true })
+        .eq('rol', 'empleado');
+
+      if (!errorEmp) setTotalEmpleados(countEmp || 0);
+
+      const hoy = new Date();
+      const lunes = new Date(hoy.setDate(hoy.getDate() - hoy.getDay() + 1)).toISOString().split('T')[0];
+      const domingo = new Date(hoy.setDate(hoy.getDate() - hoy.getDay() + 7)).toISOString().split('T')[0];
+
+      const { count: countTurnos, error: errorTurnos } = await supabase
+        .from('turnos')
+        .select('*', { count: 'exact', head: true })
+        .gte('fecha', lunes)
+        .lte('fecha', domingo);
+
+      if (!errorTurnos) setTurnosSemana(countTurnos || 0);
+    } catch (err) {
+      console.error("Error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchEmpleados = async () => {
+    const { data } = await supabase.from('usuarios').select('id_usuario, nombre').eq('rol', 'empleado');
+    if (data) setEmpleados(data);
+  };
+
+  const toggleDia = (dia: string) => {
+    setDiasSeleccionados(prev => 
+      prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]
+    );
+  };
+
+  const handleGuardarTurno = async () => {
+    if (!selectedEmpleado || diasSeleccionados.length === 0) {
+      alert("Por favor, selecciona un empleado y al menos un día.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const hoy = new Date();
+      const lunesActual = new Date(hoy.setDate(hoy.getDate() - hoy.getDay() + (hoy.getDay() === 0 ? -6 : 1)));
+      const mapaDias: { [key: string]: number } = { 'Lun': 0, 'Mar': 1, 'Mié': 2, 'Jue': 3, 'Vie': 4, 'Sáb': 5, 'Dom': 6 };
+
+      for (const diaNombre of diasSeleccionados) {
+        const fechaTurno = new Date(lunesActual);
+        fechaTurno.setDate(lunesActual.getDate() + mapaDias[diaNombre]);
+        const fechaString = fechaTurno.toISOString().split('T')[0];
+
+        const { data: nuevoTurno, error: errorTurno } = await supabase
+          .from('turnos')
+          .insert([{ fecha: fechaString, hora_inicio: horaInicio, hora_fin: horaFin, tipo: tipoRepeticion }])
+          .select()
+          .single();
+
+        if (errorTurno) throw errorTurno;
+
+        const { error: errorAsig } = await supabase
+          .from('asignaciones')
+          .insert([{ id_usuario: selectedEmpleado, id_turno: nuevoTurno.id_turno }]);
+
+        if (errorAsig) throw errorAsig;
       }
-      return newDate;
-    });
-  };
 
-  const handleNext = () => {
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      if (viewMode === 'semana') {
-        newDate.setDate(newDate.getDate() + 7);
-      } else {
-        newDate.setDate(1); // Seguro contra bugs de meses cortos
-        newDate.setMonth(newDate.getMonth() + 1);
-      }
-      return newDate;
-    });
-  };
-
-  const handleToday = () => {
-    setCurrentDate(new Date());
-  };
-
-  const monthYearString = currentDate.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' }).replace('.', '');
-  const capitalizedMonthYear = monthYearString.charAt(0).toUpperCase() + monthYearString.slice(1);
-
-  const getWeekDays = () => {
-    const curr = new Date(currentDate);
-    const first = curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1);
-    const monday = new Date(curr.setDate(first));
-    const days = [];
-    const dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-    for (let i = 0; i < 7; i++) {
-      const nextDate = new Date(monday);
-      nextDate.setDate(monday.getDate() + i);
-      days.push({ name: dayNames[i], num: nextDate.getDate(), isWeekend: i >= 5 });
+      alert("¡Turnos programados con éxito!");
+      setShowModal(false);
+      setDiasSeleccionados([]);
+      fetchStats(); 
+    } catch (err: any) {
+      console.error(err);
+      alert("Error al guardar: " + (err.message || "Fallo de conexión."));
+    } finally {
+      setLoading(false);
     }
-    return days;
   };
 
-  const getMonthDays = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; 
-    const prevMonthLastDay = new Date(year, month, 0).getDate();
-    const days = [];
-
-    for (let i = 0; i < startingDay; i++) {
-      days.push({ num: prevMonthLastDay - startingDay + i + 1, isCurrentMonth: false, isWeekend: (i === 5 || i === 6) });
-    }
-    for (let i = 1; i <= daysInMonth; i++) {
-      const dayOfWeek = (startingDay + i - 1) % 7;
-      days.push({ num: i, isCurrentMonth: true, isWeekend: (dayOfWeek === 5 || dayOfWeek === 6) });
-    }
-    const extraCells = (days.length <= 35 ? 35 : 42) - days.length;
-    for (let i = 1; i <= extraCells; i++) {
-      const dayOfWeek = (days.length) % 7;
-      days.push({ num: i, isCurrentMonth: false, isWeekend: (dayOfWeek === 5 || dayOfWeek === 6) });
-    }
-    return days;
+  // --- LÓGICA DEL CALENDARIO ---
+  const getLunes = (d: Date) => {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(date.setDate(diff));
   };
 
-  const weekDays = getWeekDays();
-  const monthDays = getMonthDays();
+  const lunesActual = getLunes(fechaReferencia);
+  
+  const diasSemana = Array.from({ length: 7 }).map((_, i) => {
+    const dia = new Date(lunesActual);
+    dia.setDate(lunesActual.getDate() + i);
+    return dia;
+  });
+
+  const irSemanaAnterior = () => {
+    const nuevaFecha = new Date(fechaReferencia);
+    nuevaFecha.setDate(nuevaFecha.getDate() - 7);
+    setFechaReferencia(nuevaFecha);
+  };
+
+  const irSemanaSiguiente = () => {
+    const nuevaFecha = new Date(fechaReferencia);
+    nuevaFecha.setDate(nuevaFecha.getDate() + 7);
+    setFechaReferencia(nuevaFecha);
+  };
+
+  const irAHoy = () => {
+    setFechaReferencia(new Date());
+  };
+
+  const formatearMesAno = (fecha: Date) => {
+    return fecha.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  };
+
+  const nombresDiasCortos = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto transition-colors duration-300">
+    <div className="p-6 md:p-8 bg-gray-50 dark:bg-slate-900 min-h-screen transition-colors duration-300">
       
-      {/* Cabecera */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-blue-700 dark:text-blue-400">Panel de Control</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm font-medium">Gestión inteligente de tus turnos y equipo</p>
+          <h1 className="text-3xl font-extrabold text-blue-700 dark:text-blue-400">Panel de Control</h1>
+          <p className="text-gray-500 dark:text-gray-400 font-medium">Gestión inteligente de tus turnos y equipo</p>
         </div>
-        <button className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-colors w-full md:w-auto cursor-pointer">
+        <button 
+          onClick={() => setShowModal(true)}
+          className="bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform hover:-translate-y-1 cursor-pointer"
+        >
           + CREAR TURNO
         </button>
       </div>
 
-      {/* Tarjetas de Resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
-          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-500 dark:text-indigo-400">
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"></path></svg>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
+          <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl text-blue-600 dark:text-blue-400">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
           </div>
           <div>
             <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Plantilla Total</p>
-            <p className="text-xl font-extrabold text-gray-800 dark:text-gray-100">0 <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">empleados</span></p>
+            <p className="text-xl font-bold text-gray-700 dark:text-white">{loading ? '...' : `${totalEmpleados} empleados`}</p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
-          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-500 dark:text-emerald-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
+          <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl text-emerald-600 dark:text-emerald-400">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
           </div>
           <div>
             <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Turnos Asignados</p>
-            <p className="text-xl font-extrabold text-gray-800 dark:text-gray-100">0 <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">esta semana</span></p>
+            <p className="text-xl font-bold text-gray-700 dark:text-white">{loading ? '...' : `${turnosSemana} esta semana`}</p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
-          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-500 dark:text-amber-400">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
+          <div className="bg-orange-50 dark:bg-orange-900/30 p-4 rounded-xl text-orange-600 dark:text-orange-400">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
           </div>
           <div>
             <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Incidencias</p>
-            <p className="text-xl font-extrabold text-gray-800 dark:text-gray-100">0 <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">pendientes</span></p>
+            <p className="text-xl font-bold text-gray-700 dark:text-white">0 pendientes</p>
           </div>
         </div>
       </div>
 
-      {/* Controles del Calendario */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-        <div className="flex flex-col md:flex-row items-center md:space-x-4 w-full md:w-auto">
-          <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400">
-            {viewMode === 'semana' ? 'Semana Actual' : 'Mes Actual'} 
-            <span className="text-gray-400 dark:text-gray-500 font-medium ml-2">| {capitalizedMonthYear}</span>
-          </h2>
-          <div className="bg-gray-100 dark:bg-slate-700 p-1 rounded-lg flex space-x-1 border border-gray-200 dark:border-slate-600 justify-center mt-2 md:mt-0">
-            <button onClick={() => setViewMode('semana')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all cursor-pointer ${viewMode === 'semana' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>Semana</button>
-            <button onClick={() => setViewMode('mes')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all cursor-pointer ${viewMode === 'mes' ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>Mes</button>
+      {/* Calendario Dinámico */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
+        <h2 className="text-xl font-bold text-gray-700 dark:text-white capitalize">
+          Semana Actual | <span className="text-blue-600 dark:text-blue-400">{formatearMesAno(lunesActual)}</span>
+        </h2>
+        <div className="flex items-center space-x-4">
+          <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-lg">
+            <button className="px-4 py-1.5 text-xs font-bold bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 rounded-md shadow-sm">Semana</button>
+            <button className="px-4 py-1.5 text-xs font-bold text-gray-500">Mes</button>
           </div>
-        </div>
-
-        <div className="flex items-center space-x-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
-          <button onClick={handlePrev} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg cursor-pointer shadow-sm">- Anterior</button>
-          <button onClick={handleToday} className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-blue-700 dark:hover:bg-blue-600 cursor-pointer">Hoy</button>
-          <button onClick={handleNext} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg cursor-pointer shadow-sm">Siguiente -</button>
+          <div className="flex items-center space-x-1">
+            <button onClick={irSemanaAnterior} className="p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors">- Anterior</button>
+            <button onClick={irAHoy} className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold px-4 cursor-pointer transition-colors shadow-sm">Hoy</button>
+            <button onClick={irSemanaSiguiente} className="p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors">Siguiente -</button>
+          </div>
         </div>
       </div>
 
-      {/* VISTA SEMANA */}
-      {viewMode === 'semana' && (
-        <div className="overflow-x-auto pb-4">
-          <div className="grid grid-cols-7 gap-3 min-w-[800px]">
-            {weekDays.map((dia, index) => (
-              <div key={index} className="flex flex-col h-[280px]">
-                <div className={`text-center py-2.5 rounded-t-xl font-bold text-sm border transition-colors duration-300 ${dia.isWeekend ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-100 dark:border-red-800/50' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 border-blue-100 dark:border-blue-800/50'}`}>
-                  {dia.name} {dia.num}
-                </div>
-                <div className="flex-1 border-x border-b border-gray-200 dark:border-slate-700 border-dashed rounded-b-xl bg-white dark:bg-slate-800 p-2 flex items-center justify-center">
-                  <span className="text-gray-300 dark:text-slate-600 font-bold text-sm">Libre</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-px bg-gray-200 dark:bg-slate-700 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm">
+        {diasSemana.map((dia, i) => {
+          const hoy = new Date();
+          const esHoy = dia.getDate() === hoy.getDate() && dia.getMonth() === hoy.getMonth() && dia.getFullYear() === hoy.getFullYear();
+          const nombreDia = nombresDiasCortos[dia.getDay()];
+          const esFinde = dia.getDay() === 0 || dia.getDay() === 6; // Domingo o Sábado
 
-      {/* VISTA MES */}
-      {viewMode === 'mes' && (
-        <div className="overflow-x-auto pb-4">
-          <div className="grid grid-cols-7 gap-2 bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm min-w-[800px]">
-            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => (
-              <div key={i} className={`text-center font-bold text-[10px] uppercase mb-2 ${i >= 5 ? 'text-red-400 dark:text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>{d}</div>
-            ))}
-            {monthDays.map((dia, i) => (
-              <div key={i} className={`h-24 border border-gray-100 dark:border-slate-700 rounded-lg p-2 flex flex-col transition-colors duration-300 ${dia.isCurrentMonth ? 'bg-white dark:bg-slate-800 hover:border-blue-400 dark:hover:border-blue-500' : 'bg-gray-50 dark:bg-slate-800/50 opacity-60'}`}>
-                <span className={`text-right text-sm font-bold ${dia.isCurrentMonth ? (dia.isWeekend ? 'text-red-500 dark:text-red-400' : 'text-gray-800 dark:text-gray-200') : 'text-gray-400 dark:text-slate-500'}`}>{dia.num}</span>
-                <div className="flex-1 flex items-center justify-center">
-                  {dia.isCurrentMonth && <span className="text-gray-200 dark:text-slate-600 text-xs font-semibold">Libre</span>}
+          return (
+            <div 
+              key={i} 
+              className={`min-h-[300px] flex flex-col transition-all ${
+                esHoy 
+                  ? 'bg-blue-50/50 dark:bg-slate-800 ring-2 ring-inset ring-blue-500 dark:ring-blue-400 relative z-10' 
+                  : 'bg-white dark:bg-slate-800/90'
+              }`}
+            >
+              <div className={`p-3 text-center border-b border-gray-100 dark:border-slate-700/50 font-bold text-sm ${
+                esHoy 
+                  ? 'text-blue-700 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-900/30' 
+                  : esFinde 
+                    ? 'text-red-500 dark:text-red-400 bg-red-50/30 dark:bg-red-900/10' 
+                    : 'text-blue-600 dark:text-blue-300 bg-gray-50/50 dark:bg-slate-800/50'
+              }`}>
+                {nombreDia} {dia.getDate()}
+              </div>
+              <div className="flex-1 flex items-center justify-center p-4">
+                <span className={`font-bold uppercase tracking-widest text-[10px] italic ${esHoy ? 'text-blue-400 dark:text-blue-500/70' : 'text-gray-300 dark:text-slate-600'}`}>
+                  Libre
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* MODAL AVANZADO (se mantiene igual) */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in">
+            <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
+              <h2 className="font-bold">Programar Turno Avanzado</h2>
+              <button onClick={() => setShowModal(false)} className="text-white/80 hover:text-white cursor-pointer">✕</button>
+            </div>
+            
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Seleccionar Empleado</label>
+                <select 
+                  value={selectedEmpleado} 
+                  onChange={(e) => setSelectedEmpleado(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">Elegir de la plantilla...</option>
+                  {empleados.map(emp => <option key={emp.id_usuario} value={emp.id_usuario}>{emp.nombre}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Asignar a días específicos</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(dia => (
+                    <button 
+                      key={dia}
+                      onClick={() => toggleDia(dia)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${diasSeleccionados.includes(dia) ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-slate-700 text-gray-500'}`}
+                    >
+                      {dia}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Tipo de Turno</label>
+                  <select 
+                    value={tipoRepeticion} 
+                    onChange={(e) => setTipoRepeticion(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="unico">Solo esta semana</option>
+                    <option value="semanal">Repetir cada semana</option>
+                    <option value="rotativo">Findes Rotativos</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Horario</label>
+                  <div className="flex items-center space-x-2">
+                    <input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2 rounded-lg text-xs dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <span className="text-gray-400">-</span>
+                    <input type="time" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2 rounded-lg text-xs dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 dark:border-slate-700 flex gap-3">
+                <button 
+                  onClick={handleGuardarTurno}
+                  disabled={loading}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm transition-colors shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? 'Guardando...' : 'Confirmar y Guardar'}
+                </button>
+                <button onClick={() => setShowModal(false)} className="px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-300 font-bold rounded-xl text-sm transition-colors cursor-pointer">
+                  Cerrar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
