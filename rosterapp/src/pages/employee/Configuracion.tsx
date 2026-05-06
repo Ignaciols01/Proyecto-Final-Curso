@@ -55,11 +55,10 @@ export default function Configuracion() {
     reader.readAsDataURL(file);
   };
 
-  // Función para quitar el avatar visualmente antes de guardar
   const handleBorrarAvatar = () => {
     setAvatarUrl(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''; // Limpiamos el input de archivos
+      fileInputRef.current.value = '';
     }
   };
 
@@ -78,14 +77,12 @@ export default function Configuracion() {
       user.nombre = nombre;
       localStorage.setItem('rosterapp_user', JSON.stringify(user));
       
-      // Si hay avatar, lo guardamos. Si es null (porque lo ha borrado), lo eliminamos.
       if (avatarUrl) {
         localStorage.setItem(`rosterapp_avatar_${user.id}`, avatarUrl);
       } else {
         localStorage.removeItem(`rosterapp_avatar_${user.id}`);
       }
       
-      // Lanzamos los eventos para que la barra superior se actualice al instante
       window.dispatchEvent(new Event('employeeAvatarUpdated'));
       window.dispatchEvent(new Event('employeeNameUpdated'));
 
@@ -195,7 +192,6 @@ export default function Configuracion() {
                 <div>
                   <input type="file" accept="image/*" ref={fileInputRef} onChange={handleAvatarChange} className="hidden" />
                   
-                  {/* BOTONERA DE AVATAR ACTUALIZADA */}
                   <div className="flex flex-wrap justify-center sm:justify-start gap-2 mb-2">
                     <button onClick={() => fileInputRef.current?.click()} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 font-bold py-2 px-4 rounded-lg shadow-sm hover:border-blue-300 dark:hover:border-blue-500 transition-colors text-xs md:text-sm cursor-pointer">
                       Cambiar Avatar

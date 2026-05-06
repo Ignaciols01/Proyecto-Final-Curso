@@ -16,7 +16,7 @@ import EmployeeMisTurnos from './pages/employee/MisTurnos';
 import EmployeeFichaje from './pages/employee/Fichaje';
 import EmployeeConfiguracion from './pages/employee/Configuracion';
 
-
+// Inicialización de Modo Oscuro al arrancar la app
 if (localStorage.getItem('rosterapp_theme') === 'dark') {
   document.documentElement.classList.add('dark');
 }
