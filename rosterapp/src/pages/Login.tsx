@@ -48,9 +48,6 @@ export default function Login() {
       }));
 
       // ==========================================
-      // EL ARREGLO ESTÁ AQUÍ:
-      // Comprobamos el rol exacto de la base de datos y 
-      // usamos las rutas exactas de tu App.tsx
       // ==========================================
       if (usuario.rol === 'administrador' || usuario.rol === 'admin') {
         navigate('/admin/dashboard');

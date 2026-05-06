@@ -13,6 +13,7 @@ interface Solicitud {
   id_solicitud: string;
   fecha_solicitada: string;
   estado: string;
+  motivo_rechazo?: string | null;
   usuarios: { id_usuario: string, nombre: string };
 }
 
@@ -21,7 +22,6 @@ export default function AdminDashboard() {
   const [turnosSemana, setTurnosSemana] = useState(0);
   const [loading, setLoading] = useState(true);
   
-  // ESTADOS DEL MODAL DE CREACIÓN DE TURNOS
   const [showModal, setShowModal] = useState(false);
   const [empleados, setEmpleados] = useState<{id_usuario: string, nombre: string}[]>([]);
   const [selectedEmpleado, setSelectedEmpleado] = useState('');
@@ -30,23 +30,25 @@ export default function AdminDashboard() {
   const [horaInicio, setHoraInicio] = useState('08:00');
   const [horaFin, setHoraFin] = useState('15:00');
 
-  // ESTADOS DEL MODAL DE BORRADO MASIVO
   const [showModalBorrar, setShowModalBorrar] = useState(false);
   const [borrarEmpleado, setBorrarEmpleado] = useState('');
   const [borrarFechaInicio, setBorrarFechaInicio] = useState('');
   const [borrarFechaFin, setBorrarFechaFin] = useState('');
 
-  // ESTADOS DEL CALENDARIO
   const [fechaReferencia, setFechaReferencia] = useState(new Date());
   const [vistaCalendario, setVistaCalendario] = useState<'semana' | 'mes'>('semana');
   const [turnosCalendario, setTurnosCalendario] = useState<Turno[]>([]);
+  const [solicitudesCalendario, setSolicitudesCalendario] = useState<Solicitud[]>([]);
   const [diaModalSeleccionado, setDiaModalSeleccionado] = useState<Date | null>(null);
 
-  // ESTADOS DE SOLICITUDES
+  // Estado único para las solicitudes (Sincroniza Modal y Botón)
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
   const [showModalSolicitudes, setShowModalSolicitudes] = useState(false);
+  
+  // Estados para manejar el motivo del rechazo
+  const [solicitudARechazar, setSolicitudARechazar] = useState<string | null>(null);
+  const [motivoRechazo, setMotivoRechazo] = useState('');
 
-  // ESTADOS PARA ALERTAS Y BORRADO INDIVIDUAL
   const [elementoAEliminar, setElementoAEliminar] = useState<{ tipo: 'unico', idTurno: string } | { tipo: 'dia', fecha: Date } | null>(null);
   const [alerta, setAlerta] = useState<{titulo: string, texto: string, tipo: 'exito' | 'error'} | null>(null);
 
@@ -87,6 +89,7 @@ export default function AdminDashboard() {
     if (data) setEmpleados(data);
   };
 
+  // Esta función carga las solicitudes y asegura que el contador se actualice
   const fetchSolicitudes = async () => {
     const { data } = await supabase
       .from('solicitudes_libres')
@@ -96,19 +99,44 @@ export default function AdminDashboard() {
     if (data) setSolicitudes(data as any);
   };
 
-  const gestionarSolicitud = async (id_sol: string, id_user: string, accion: 'aprobada' | 'rechazada') => {
+  const gestionarSolicitud = async (id_sol: string, id_user: string, fecha_sol: string, accion: 'aprobada' | 'rechazada') => {
     try {
-      await supabase.from('solicitudes_libres').update({ estado: accion }).eq('id_solicitud', id_sol);
+      const updateData: any = { estado: accion };
+      if (accion === 'rechazada') updateData.motivo_rechazo = motivoRechazo;
+
+      // 1. Actualizamos el estado de la solicitud en la base de datos
+      await supabase.from('solicitudes_libres').update(updateData).eq('id_solicitud', id_sol);
       
+      // 2. Si es aprobada, restamos un día libre al usuario
       if (accion === 'aprobada') {
         const { data: userData } = await supabase.from('usuarios').select('dias_libres_disponibles').eq('id_usuario', id_user).single();
         if (userData && userData.dias_libres_disponibles > 0) {
           await supabase.from('usuarios').update({ dias_libres_disponibles: userData.dias_libres_disponibles - 1 }).eq('id_usuario', id_user);
         }
       }
-      fetchSolicitudes(); 
+
+      // 3. Enviamos la notificación al buzón del empleado
+      const fechaFormateada = new Date(fecha_sol).toLocaleDateString('es-ES');
+      const tituloNotif = accion === 'aprobada' ? 'Día libre aprobado' : 'Día libre rechazado';
+      const mensajeNotif = accion === 'aprobada' 
+        ? `¡Enhorabuena! Tu solicitud para el día ${fechaFormateada} ha sido aprobada.`
+        : `Tu solicitud para el día ${fechaFormateada} no ha podido ser aprobada. Motivo: ${motivoRechazo}`;
+
+      await supabase.from('notificaciones').insert([{
+        id_usuario: id_user,
+        titulo: tituloNotif,
+        mensaje: mensajeNotif,
+        leida: false
+      }]);
+      
+      setSolicitudARechazar(null);
+      setMotivoRechazo('');
+      
+      // 4. Refrescamos para actualizar el contador del botón y el modal
+      await fetchSolicitudes(); 
+      await fetchTurnosCalendario();
     } catch (error) {
-      setAlerta({ titulo: 'Error', texto: 'No se pudo gestionar la solicitud.', tipo: 'error' });
+      setAlerta({ titulo: 'Error', texto: 'No se pudo gestionar la solicitud ni enviar la notificación.', tipo: 'error' });
     }
   };
 
@@ -130,23 +158,31 @@ export default function AdminDashboard() {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data: dataTurnos } = await supabase
         .from('turnos')
         .select(`id_turno, fecha, hora_inicio, hora_fin, asignaciones (usuarios (nombre))`)
         .gte('fecha', fechaInicioStr)
         .lte('fecha', fechaFinStr);
 
-      if (error) throw error;
-      if (data) {
-        const turnosFormateados = data.map((t: any) => ({
-          id_turno: t.id_turno,
-          fecha: t.fecha,
-          hora_inicio: t.hora_inicio,
-          hora_fin: t.hora_fin,
+      if (dataTurnos) {
+        const formated = dataTurnos.map((t: any) => ({
+          ...t,
           usuarios: t.asignaciones ? t.asignaciones.map((a: any) => a.usuarios).filter(Boolean) : []
         }));
-        setTurnosCalendario(turnosFormateados);
+        setTurnosCalendario(formated);
       }
+
+      const { data: dataSols } = await supabase
+        .from('solicitudes_libres')
+        .select('id_solicitud, fecha_solicitada, estado, usuarios(id_usuario, nombre)')
+        .gte('fecha_solicitada', fechaInicioStr)
+        .lte('fecha_solicitada', fechaFinStr)
+        .in('estado', ['pendiente', 'aprobada']);
+
+      if (dataSols) {
+        setSolicitudesCalendario(dataSols as any);
+      }
+
     } catch (err) {
       console.error(err);
     }
@@ -337,7 +373,6 @@ export default function AdminDashboard() {
     const ultimoDia = new Date(fechaReferencia.getFullYear(), fechaReferencia.getMonth() + 1, 0);
     let diaInicioSemana = primerDia.getDay() - 1;
     if (diaInicioSemana === -1) diaInicioSemana = 6; 
-    
     const dias = [];
     for (let i = 0; i < diaInicioSemana; i++) dias.push(null);
     for (let i = 1; i <= ultimoDia.getDate(); i++) dias.push(new Date(fechaReferencia.getFullYear(), fechaReferencia.getMonth(), i));
@@ -371,24 +406,32 @@ export default function AdminDashboard() {
     return turnosCalendario.filter(t => t.fecha === fechaFormat);
   };
 
+  const getSolicitudesParaElDia = (fecha: Date) => {
+    const offset = fecha.getTimezoneOffset();
+    const fechaFormat = new Date(fecha.getTime() - (offset*60*1000)).toISOString().split('T')[0];
+    return solicitudesCalendario.filter(s => s.fecha_solicitada === fechaFormat);
+  };
+
   return (
-    <div className="p-4 md:p-8 bg-gray-50 dark:bg-slate-900 min-h-screen transition-colors duration-300">
+    <div className="p-4 md:p-8 bg-gray-50 dark:bg-[#0f172a] min-h-screen transition-colors duration-300">
       
-      {/* CABECERA Y BOTONES (Adaptados a móvil) */}
+      {/* CABECERA Y BOTONES DEL DASHBOARD */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-blue-700 dark:text-blue-400">Panel de Control</h1>
-          <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 font-medium">Gestión inteligente de tus turnos y equipo</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-blue-700 dark:text-blue-500">Panel de Control</h1>
+          <p className="text-sm md:text-base text-gray-500 dark:text-slate-400 font-medium">Gestión inteligente de tus turnos y equipo</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
+          
+          {/* BOTÓN SOLICITUDES (Sincronizado con el estado real) */}
           <button 
             onClick={() => setShowModalSolicitudes(true)}
-            className={`flex-1 sm:flex-none justify-center font-bold py-3 px-5 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2 border ${solicitudes.length > 0 ? 'bg-orange-50 border-orange-200 text-orange-600 dark:bg-orange-900/30 dark:border-orange-500/30 dark:text-orange-400 animate-pulse' : 'bg-white border-gray-200 text-gray-600 dark:bg-slate-800 dark:border-slate-700 dark:text-gray-300'}`}
+            className={`flex-1 sm:flex-none justify-center font-bold py-3 px-5 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2 border ${solicitudes.length > 0 ? 'bg-orange-500/10 border-orange-500/30 text-orange-500 animate-pulse' : 'bg-white dark:bg-[#1e293b] border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300'}`}
           >
             <span>🛎️</span> Solicitudes ({solicitudes.length})
           </button>
           
-          <button onClick={() => setShowModalBorrar(true)} className="flex-1 sm:flex-none justify-center bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 font-bold py-3 px-4 rounded-lg shadow-sm transition-all cursor-pointer">
+          <button onClick={() => setShowModalBorrar(true)} className="flex-1 sm:flex-none justify-center bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 border border-transparent dark:border-red-500/30 font-bold py-3 px-4 rounded-lg shadow-sm transition-all cursor-pointer">
             - BORRAR TURNOS
           </button>
 
@@ -398,26 +441,25 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* TARJETAS ESTADÍSTICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-10">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
-          <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl text-blue-600 dark:text-blue-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg></div>
+        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4">
+          <div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-xl text-blue-600 dark:text-blue-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg></div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">Plantilla Total</p>
+            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest truncate">Plantilla Total</p>
             <p className="text-xl font-bold text-gray-700 dark:text-white truncate">{loading ? '...' : `${totalEmpleados} empleados`}</p>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4">
-          <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl text-emerald-600 dark:text-emerald-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
+        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4">
+          <div className="bg-emerald-50 dark:bg-emerald-500/10 p-4 rounded-xl text-emerald-600 dark:text-emerald-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">Turnos Asignados</p>
+            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest truncate">Turnos Asignados</p>
             <p className="text-xl font-bold text-gray-700 dark:text-white truncate">{loading ? '...' : `${turnosSemana} esta semana`}</p>
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center space-x-4 sm:col-span-2 lg:col-span-1">
-          <div className="bg-orange-50 dark:bg-orange-900/30 p-4 rounded-xl text-orange-600 dark:text-orange-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div>
+        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4 sm:col-span-2 lg:col-span-1">
+          <div className="bg-orange-50 dark:bg-orange-500/10 p-4 rounded-xl text-orange-600 dark:text-orange-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">Incidencias</p>
+            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest truncate">Incidencias</p>
             <p className="text-xl font-bold text-gray-700 dark:text-white truncate">0 pendientes</p>
           </div>
         </div>
@@ -429,42 +471,51 @@ export default function AdminDashboard() {
           <span className="text-blue-600 dark:text-blue-400">{formatearFecha(fechaReferencia)}</span>
         </h2>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-          <div className="flex bg-gray-100 dark:bg-slate-800 p-1 rounded-lg">
-            <button onClick={() => setVistaCalendario('semana')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors cursor-pointer ${vistaCalendario === 'semana' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>Semana</button>
-            <button onClick={() => setVistaCalendario('mes')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors cursor-pointer ${vistaCalendario === 'mes' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>Mes</button>
+          <div className="flex bg-gray-100 dark:bg-[#1e293b] p-1 rounded-lg">
+            <button onClick={() => setVistaCalendario('semana')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors cursor-pointer ${vistaCalendario === 'semana' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-slate-400'}`}>Semana</button>
+            <button onClick={() => setVistaCalendario('mes')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors cursor-pointer ${vistaCalendario === 'mes' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-slate-400'}`}>Mes</button>
           </div>
           <div className="flex items-center space-x-1">
-            <button onClick={irAnterior} className="p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">- Anterior</button>
+            <button onClick={irAnterior} className="p-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-slate-800 rounded-lg text-xs font-bold text-gray-600 dark:text-slate-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">- Anterior</button>
             <button onClick={() => setFechaReferencia(new Date())} className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold px-4 cursor-pointer transition-colors">Hoy</button>
-            <button onClick={irSiguiente} className="p-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">Siguiente -</button>
+            <button onClick={irSiguiente} className="p-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-slate-800 rounded-lg text-xs font-bold text-gray-600 dark:text-slate-300 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">Siguiente -</button>
           </div>
         </div>
       </div>
 
-      {/* ZONA DEL CALENDARIO: WRAPPER CON SCROLL HORIZONTAL (overflow-x-auto) */}
       <div className="overflow-x-auto pb-4 hide-scrollbar">
         {vistaCalendario === 'semana' ? (
-          <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-slate-700 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm min-w-[800px]">
+          <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-slate-800/50 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-800 shadow-sm min-w-[800px]">
             {diasSemana.map((dia, i) => {
               const hoy = new Date();
               const esHoy = dia.getDate() === hoy.getDate() && dia.getMonth() === hoy.getMonth() && dia.getFullYear() === hoy.getFullYear();
               const turnosDelDia = getTurnosParaElDia(dia);
+              const solsDelDia = getSolicitudesParaElDia(dia);
 
               return (
-                <div key={i} onClick={() => setDiaModalSeleccionado(dia)} className={`min-h-[300px] flex flex-col transition-all cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/80 ${esHoy ? 'bg-blue-50/10 dark:bg-slate-800 ring-2 ring-inset ring-blue-500 z-10' : 'bg-white dark:bg-slate-800'}`}>
-                  <div className={`p-3 text-center border-b border-gray-100 dark:border-slate-700/50 font-bold text-sm ${esHoy ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-900/30' : i >= 5 ? 'text-red-500 bg-red-50/10 dark:bg-red-900/10' : 'text-blue-600 dark:text-blue-400 bg-gray-50/50 dark:bg-slate-800/50'}`}>
+                <div key={i} onClick={() => setDiaModalSeleccionado(dia)} className={`min-h-[300px] flex flex-col transition-all cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1e293b]/80 ${esHoy ? 'bg-blue-50/10 dark:bg-[#1e293b] ring-2 ring-inset ring-blue-500 z-10' : 'bg-white dark:bg-[#1e293b]'}`}>
+                  <div className={`p-3 text-center border-b border-gray-100 dark:border-slate-800 font-bold text-sm ${esHoy ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-900/30' : i >= 5 ? 'text-red-500 bg-red-50/10 dark:bg-red-900/10' : 'text-blue-600 dark:text-blue-400 bg-gray-50/50 dark:bg-slate-900/50'}`}>
                     {nombresDiasCortos[dia.getDay()]} {dia.getDate()}
                   </div>
                   <div className="flex-1 flex flex-col p-2 space-y-2 overflow-y-auto pointer-events-none">
+                    
+                    {/* Render de Solicitudes (Aprobadas o Pendientes) */}
+                    {solsDelDia.map(sol => (
+                      <div key={sol.id_solicitud} className={`p-2 rounded-lg shadow-sm border ${sol.estado === 'pendiente' ? 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-500/10 dark:border-orange-500/30 dark:text-orange-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400'}`}>
+                        <span className="text-[9px] font-extrabold uppercase tracking-widest block">{sol.estado === 'pendiente' ? 'Solicitado' : 'Libre'}</span>
+                        <span className="text-xs font-bold block">{sol.usuarios.nombre}</span>
+                      </div>
+                    ))}
+
                     {turnosDelDia.length > 0 ? (
                       turnosDelDia.map(turno => (
-                        <div key={turno.id_turno} className="bg-transparent border border-blue-500/30 dark:border-blue-500/20 p-2 rounded-lg shadow-sm">
+                        <div key={turno.id_turno} className="bg-transparent border border-blue-500/30 dark:border-slate-700 p-2 rounded-lg shadow-sm">
                           <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-1">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</span>
-                          {turno.usuarios.map((u, idx) => <p key={idx} className="text-xs font-bold text-gray-800 dark:text-gray-100 truncate">{u.nombre}</p>)}
+                          {turno.usuarios.map((u, idx) => <p key={idx} className="text-xs font-bold text-gray-800 dark:text-white">{u.nombre}</p>)}
                         </div>
                       ))
                     ) : (
-                      <div className="h-full flex items-center justify-center"><span className="font-bold uppercase tracking-widest text-[10px] italic text-gray-300 dark:text-slate-600">Libre</span></div>
+                      solsDelDia.length === 0 && <div className="h-full flex items-center justify-center"><span className="font-bold uppercase tracking-widest text-[10px] italic text-gray-300 dark:text-slate-600">Libre</span></div>
                     )}
                   </div>
                 </div>
@@ -472,27 +523,35 @@ export default function AdminDashboard() {
             })}
           </div>
         ) : (
-          <div className="bg-white dark:bg-slate-800 rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm min-w-[800px]">
-            <div className="grid grid-cols-7 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50">
+          <div className="bg-white dark:bg-[#1e293b] rounded-xl overflow-hidden border border-gray-200 dark:border-slate-800 shadow-sm min-w-[800px]">
+            <div className="grid grid-cols-7 border-b border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/50">
               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d, i) => (
-                <div key={i} className={`p-3 text-center text-xs font-bold uppercase ${i >= 5 ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>{d}</div>
+                <div key={i} className={`p-3 text-center text-xs font-bold uppercase ${i >= 5 ? 'text-red-500' : 'text-gray-500 dark:text-slate-400'}`}>{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-slate-700">
+            <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-slate-800/50">
               {diasMes.map((dia, i) => {
-                if (!dia) return <div key={i} className="bg-gray-50 dark:bg-slate-800/30 min-h-[120px]"></div>;
+                if (!dia) return <div key={i} className="bg-gray-50 dark:bg-slate-900/30 min-h-[120px]"></div>;
                 const hoy = new Date();
                 const esHoy = dia.getDate() === hoy.getDate() && dia.getMonth() === hoy.getMonth() && dia.getFullYear() === hoy.getFullYear();
                 const turnosDelDia = getTurnosParaElDia(dia);
+                const solsDelDia = getSolicitudesParaElDia(dia);
 
                 return (
-                  <div key={i} onClick={() => setDiaModalSeleccionado(dia)} className={`min-h-[120px] bg-white dark:bg-slate-800 p-1 flex flex-col cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${esHoy ? 'ring-2 ring-inset ring-blue-500 relative z-10' : ''}`}>
-                    <span className={`text-xs font-bold p-1 w-6 h-6 flex items-center justify-center rounded-full mb-1 ${esHoy ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300'}`}>{dia.getDate()}</span>
-                    <div className="flex-1 overflow-y-auto space-y-1 pointer-events-none">
+                  <div key={i} onClick={() => setDiaModalSeleccionado(dia)} className={`min-h-[120px] bg-white dark:bg-[#1e293b] p-1 flex flex-col cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors ${esHoy ? 'ring-2 ring-inset ring-blue-500 relative z-10' : ''}`}>
+                    <span className={`text-xs font-bold p-1 w-6 h-6 flex items-center justify-center rounded-full mb-1 ${esHoy ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-slate-300'}`}>{dia.getDate()}</span>
+                    <div className="flex-1 overflow-y-auto space-y-1 pointer-events-none p-0.5">
+                      
+                      {solsDelDia.map(sol => (
+                        <div key={sol.id_solicitud} className={`px-1 py-0.5 rounded text-[9px] border truncate flex flex-col ${sol.estado === 'pendiente' ? 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-500/10 dark:border-orange-500/30 dark:text-orange-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400'}`}>
+                          <span className="font-extrabold">{sol.usuarios.nombre.split(' ')[0]} (Libre)</span>
+                        </div>
+                      ))}
+
                       {turnosDelDia.map(turno => (
-                        <div key={turno.id_turno} className="bg-blue-50/50 dark:bg-slate-700 px-1 py-0.5 rounded text-[10px] border border-blue-200 dark:border-slate-600 truncate flex flex-col">
+                        <div key={turno.id_turno} className="bg-blue-50/50 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px] border border-blue-200 dark:border-slate-700 truncate flex flex-col">
                           <span className="font-bold text-blue-700 dark:text-blue-400">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</span>
-                          {turno.usuarios.map((u, idx) => <span key={idx} className="text-gray-700 dark:text-gray-200 truncate">{u.nombre.split(' ')[0]}</span>)}
+                          {turno.usuarios.map((u, idx) => <span key={idx} className="text-gray-700 dark:text-slate-300 truncate">{u.nombre.split(' ')[0]}</span>)}
                         </div>
                       ))}
                     </div>
@@ -504,10 +563,70 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* RESTO DE MODALES INTACTOS */}
+      {/* ================================================================================= */}
+      {/* MODAL SOLICITUDES DE DÍAS LIBRES (Diseño exacto Imagen 2 con Dark Theme) */}
+      {/* ================================================================================= */}
+      {showModalSolicitudes && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={() => setShowModalSolicitudes(false)}>
+          <div className="bg-[#1e293b] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#ff7b00] p-5 text-white flex justify-between items-center">
+              <div>
+                <h2 className="font-extrabold text-xl">Solicitudes de Días Libres</h2>
+                <p className="text-orange-100 text-sm font-medium mt-0.5">{solicitudes.length} pendientes de revisión</p>
+              </div>
+              <button onClick={() => setShowModalSolicitudes(false)} className="text-white/80 hover:text-white cursor-pointer hover:bg-black/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors">✕</button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 bg-[#0f172a]">
+              {solicitudes.length > 0 ? (
+                solicitudes.map(sol => (
+                  <div key={sol.id_solicitud} className="bg-[#1e293b] border border-slate-700 rounded-xl p-5 shadow-sm">
+                    <h3 className="font-bold text-white text-base">{sol.usuarios.nombre}</h3>
+                    <p className="text-sm text-slate-400 mb-4 border-b border-slate-700 pb-4">
+                      Desea el <span className="font-bold text-[#ff7b00]">{new Date(sol.fecha_solicitada).toLocaleDateString('es-ES')}</span> libre
+                    </p>
+
+                    {solicitudARechazar === sol.id_solicitud ? (
+                      <div className="animate-fade-in">
+                        <label className="block text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2">Motivo del rechazo</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ej: Necesitamos personal ese día..."
+                          value={motivoRechazo}
+                          onChange={(e) => setMotivoRechazo(e.target.value)}
+                          className="w-full border border-slate-600 bg-[#0f172a] p-3 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm mb-4"
+                        />
+                        <div className="flex gap-3">
+                          <button onClick={() => setSolicitudARechazar(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold py-2.5 rounded-lg transition-colors cursor-pointer">Cancelar</button>
+                          <button onClick={() => gestionarSolicitud(sol.id_solicitud, sol.usuarios.id_usuario, sol.fecha_solicitada, 'rechazada')} className="flex-1 bg-[#e60000] hover:bg-red-700 text-white text-sm font-bold py-2.5 rounded-lg transition-colors cursor-pointer shadow-sm">Confirmar Rechazo</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-3">
+                        <button onClick={() => gestionarSolicitud(sol.id_solicitud, sol.usuarios.id_usuario, sol.fecha_solicitada, 'aprobada')} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold transition-colors cursor-pointer text-sm shadow-sm">
+                          Aprobar
+                        </button>
+                        <button onClick={() => setSolicitudARechazar(sol.id_solicitud)} className="flex-1 bg-transparent border border-red-900/50 text-red-400 hover:bg-red-900/20 py-2.5 rounded-lg font-bold transition-colors cursor-pointer text-sm">
+                          Rechazar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-slate-400 font-bold">No hay solicitudes pendientes.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLES DEL DÍA */}
       {diaModalSeleccionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={() => setDiaModalSeleccionado(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-[#1e293b] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
             <div className="bg-blue-600 p-5 text-white flex justify-between items-center">
               <div>
                 <h2 className="font-extrabold text-lg">Turnos del Día</h2>
@@ -519,16 +638,16 @@ export default function AdminDashboard() {
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               {getTurnosParaElDia(diaModalSeleccionado).length > 0 ? (
                 getTurnosParaElDia(diaModalSeleccionado).map(turno => (
-                  <div key={turno.id_turno} className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-xl p-4 shadow-sm relative group">
+                  <div key={turno.id_turno} className="bg-gray-50 dark:bg-[#0f172a] border border-gray-200 dark:border-slate-700 rounded-xl p-4 shadow-sm relative group">
                     <button 
                       onClick={() => setElementoAEliminar({ tipo: 'unico', idTurno: turno.id_turno })}
-                      className="absolute top-4 right-4 bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 p-2 rounded-lg transition-colors cursor-pointer"
+                      className="absolute top-4 right-4 bg-red-100 hover:bg-red-200 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 p-2 rounded-lg transition-colors cursor-pointer"
                       title="Eliminar este turno"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
                     <div className="flex items-center space-x-2 mb-3">
-                      <span className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-lg text-sm border border-blue-200 dark:border-slate-600">
+                      <span className="bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold px-3 py-1 rounded-lg text-sm border border-blue-200 dark:border-blue-500/30">
                         {turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}
                       </span>
                     </div>
@@ -538,7 +657,7 @@ export default function AdminDashboard() {
                           <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
                             {u.nombre.substring(0,2).toUpperCase()}
                           </div>
-                          <span className="font-bold text-gray-800 dark:text-gray-100 text-sm">{u.nombre}</span>
+                          <span className="font-bold text-gray-800 dark:text-white text-sm">{u.nombre}</span>
                         </div>
                       ))}
                     </div>
@@ -546,16 +665,16 @@ export default function AdminDashboard() {
                 ))
               ) : (
                 <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-gray-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4M8 16l-4-4 4-4"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 12a8 8 0 018-8 8 8 0 018 8 8 8 0 01-8-8z"></path></svg>
+                  <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-8 h-8 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4M8 16l-4-4 4-4"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 12a8 8 0 018-8 8 8 0 01-8-8z"></path></svg>
                   </div>
-                  <p className="text-gray-500 dark:text-gray-400 font-bold">No hay nadie asignado este día</p>
+                  <p className="text-gray-500 dark:text-slate-400 font-bold">No hay nadie asignado este día</p>
                 </div>
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80 flex gap-3">
-              <button onClick={() => setDiaModalSeleccionado(null)} className="flex-1 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-sm text-sm">
+            <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/50 flex gap-3">
+              <button onClick={() => setDiaModalSeleccionado(null)} className="flex-1 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-sm text-sm">
                 Cerrar Detalles
               </button>
             </div>
@@ -563,51 +682,51 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* MODAL PARA BORRAR TURNOS MASIVAMENTE */}
       {showModalBorrar && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in" onClick={() => setShowModalBorrar(false)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            
-            <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
+          <div className="bg-white dark:bg-[#1e293b] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-500">
+                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-500/10 flex items-center justify-center text-red-600 dark:text-red-400">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 </div>
                 <div>
                   <h2 className="text-xl font-extrabold text-gray-800 dark:text-white">Borrado Masivo</h2>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5">Elimina turnos por rango de fechas</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 font-medium mt-0.5">Elimina turnos por rango de fechas</p>
                 </div>
               </div>
-              <button onClick={() => setShowModalBorrar(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">✕</button>
+              <button onClick={() => setShowModalBorrar(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800">✕</button>
             </div>
 
             <div className="p-6 space-y-5">
-              <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-xl p-4 flex gap-3">
-                <svg className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl p-4 flex gap-3">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <p className="text-xs text-red-800 dark:text-red-300 font-medium">Esta acción eliminará todos los turnos del empleado en el rango seleccionado. Esta acción no se puede deshacer.</p>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Seleccionar Empleado</label>
-                <select value={borrarEmpleado} onChange={(e) => setBorrarEmpleado(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-3 rounded-xl text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm">
-                  <option value="" className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">Elegir de la plantilla...</option>
-                  {empleados.map(emp => <option key={emp.id_usuario} value={emp.id_usuario} className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">{emp.nombre}</option>)}
+                <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2">Seleccionar Empleado</label>
+                <select value={borrarEmpleado} onChange={(e) => setBorrarEmpleado(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#0f172a] p-3 rounded-xl text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm">
+                  <option value="" className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">Elegir de la plantilla...</option>
+                  {empleados.map(emp => <option key={emp.id_usuario} value={emp.id_usuario} className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">{emp.nombre}</option>)}
                 </select>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Desde (Fecha de Inicio)</label>
-                  <input type="date" value={borrarFechaInicio} onChange={(e) => setBorrarFechaInicio(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-3 rounded-xl text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm" />
+                  <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2">Desde (Fecha de Inicio)</label>
+                  <input type="date" value={borrarFechaInicio} onChange={(e) => setBorrarFechaInicio(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#0f172a] p-3 rounded-xl text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm dark:[color-scheme:dark]" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Hasta (Fecha de Fin)</label>
-                  <input type="date" value={borrarFechaFin} onChange={(e) => setBorrarFechaFin(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-3 rounded-xl text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm" />
+                  <label className="block text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2">Hasta (Fecha de Fin)</label>
+                  <input type="date" value={borrarFechaFin} onChange={(e) => setBorrarFechaFin(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#0f172a] p-3 rounded-xl text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500 transition-all shadow-sm dark:[color-scheme:dark]" />
                 </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80 flex gap-3">
-              <button onClick={() => setShowModalBorrar(false)} className="flex-1 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-sm text-sm">
+            <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900/50 flex gap-3">
+              <button onClick={() => setShowModalBorrar(false)} className="flex-1 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-sm text-sm">
                 Cancelar
               </button>
               <button onClick={handleBorrarMasivo} disabled={loading} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-md text-sm disabled:opacity-50">
@@ -618,20 +737,97 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* MODAL CREAR TURNO */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <div className="bg-white dark:bg-[#1e293b] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
+              <h2 className="font-bold">Programar Turno Avanzado</h2>
+              <button onClick={() => setShowModal(false)} className="text-white/80 hover:text-white cursor-pointer">✕</button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-400 uppercase mb-2">Seleccionar Empleado</label>
+                <select value={selectedEmpleado} onChange={(e) => setSelectedEmpleado(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#0f172a] p-2.5 rounded-lg text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="" className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">Elegir de la plantilla...</option>
+                  {empleados.map(emp => <option key={emp.id_usuario} value={emp.id_usuario} className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">{emp.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-400 uppercase mb-2">Asignar a días específicos</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(dia => (
+                    <button key={dia} onClick={() => toggleDia(dia)} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${diasSeleccionados.includes(dia) ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'}`}>{dia}</button>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-400 uppercase mb-2">Tipo de Turno</label>
+                <select value={tipoRepeticion} onChange={(e) => setTipoRepeticion(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#0f172a] p-2.5 rounded-lg text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="unico" className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">Solo esta semana</option>
+                  <option value="semanal" className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">Repetir cada semana</option>
+                  <option value="rotativo" className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">Findes Rotativos</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-slate-400 uppercase mb-2">Horario</label>
+                <div className="flex gap-2 mb-3">
+                  <button type="button" onClick={() => {setHoraInicio('08:00'); setHoraFin('15:00');}} className="flex-1 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-[10px] font-bold py-1.5 rounded-md transition-colors cursor-pointer border border-transparent hover:border-blue-200 dark:hover:border-blue-500/30">Mañana</button>
+                  <button type="button" onClick={() => {setHoraInicio('15:00'); setHoraFin('22:00');}} className="flex-1 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold py-1.5 rounded-md transition-colors cursor-pointer border border-transparent hover:border-emerald-200 dark:hover:border-emerald-500/30">Tarde</button>
+                  <button type="button" onClick={() => {setHoraInicio('22:00'); setHoraFin('06:00');}} className="flex-1 bg-purple-50 dark:bg-purple-500/10 hover:bg-purple-100 dark:hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 text-[10px] font-bold py-1.5 rounded-md transition-colors cursor-pointer border border-transparent hover:border-purple-200 dark:hover:border-purple-500/30">Noche</button>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <div className="flex items-center bg-gray-50 dark:bg-[#0f172a] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden flex-1 focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                    <select value={horaInicio.split(':')[0]} onChange={(e) => setHoraInicio(`${e.target.value}:${horaInicio.split(':')[1]}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+                      {horasArray.map(h => <option key={`h-ini-${h}`} value={h} className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">{h}</option>)}
+                    </select>
+                    <span className="text-gray-400 font-bold">:</span>
+                    <select value={horaInicio.split(':')[1]} onChange={(e) => setHoraInicio(`${horaInicio.split(':')[0]}:${e.target.value}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+                      {minutosArray.map(m => <option key={`m-ini-${m}`} value={m} className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">{m}</option>)}
+                    </select>
+                  </div>
+                  
+                  <span className="text-gray-400 font-bold">-</span>
+                  
+                  <div className="flex items-center bg-gray-50 dark:bg-[#0f172a] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden flex-1 focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
+                    <select value={horaFin.split(':')[0]} onChange={(e) => setHoraFin(`${e.target.value}:${horaFin.split(':')[1]}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+                      {horasArray.map(h => <option key={`h-fin-${h}`} value={h} className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">{h}</option>)}
+                    </select>
+                    <span className="text-gray-400 font-bold">:</span>
+                    <select value={horaFin.split(':')[1]} onChange={(e) => setHoraFin(`${horaFin.split(':')[0]}:${e.target.value}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+                      {minutosArray.map(m => <option key={`m-fin-${m}`} value={m} className="bg-white dark:bg-[#1e293b] text-gray-800 dark:text-white">{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex gap-3">
+                <button onClick={handleGuardarTurno} disabled={loading} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-md cursor-pointer disabled:opacity-50">{loading ? 'Guardando...' : 'Confirmar y Guardar'}</button>
+                <button onClick={() => setShowModal(false)} className="px-6 py-3 bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-300 font-bold rounded-xl text-sm cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMAR ELIMINACIÓN Y ALERTAS */}
       {elementoAEliminar && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[300] p-4 animate-fade-in" onClick={() => setElementoAEliminar(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col p-6 text-center" onClick={e => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white dark:border-slate-800 shadow-sm">
+          <div className="bg-white dark:bg-[#1e293b] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col p-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white dark:border-slate-800 shadow-sm">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             </div>
             <h2 className="text-xl font-extrabold text-gray-800 dark:text-white mb-2">¿Confirmar borrado?</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+            <p className="text-gray-500 dark:text-slate-400 text-sm mb-6">
               {elementoAEliminar.tipo === 'unico' 
                 ? 'Esta acción no se puede deshacer y se eliminará de la agenda del empleado.' 
                 : 'Esta acción borrará TODOS los turnos de este día para todos los empleados.'}
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setElementoAEliminar(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-colors cursor-pointer text-sm">
+              <button onClick={() => setElementoAEliminar(null)} className="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 font-bold py-3 rounded-xl transition-colors cursor-pointer text-sm">
                 Cancelar
               </button>
               <button 
@@ -648,8 +844,8 @@ export default function AdminDashboard() {
 
       {alerta && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[400] p-4 animate-fade-in" onClick={() => setAlerta(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col p-6 text-center border border-gray-100 dark:border-slate-700" onClick={e => e.stopPropagation()}>
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${alerta.tipo === 'exito' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-500'}`}>
+          <div className="bg-white dark:bg-[#1e293b] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col p-6 text-center border border-gray-100 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${alerta.tipo === 'exito' ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400'}`}>
               {alerta.tipo === 'exito' ? (
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
               ) : (
@@ -657,124 +853,10 @@ export default function AdminDashboard() {
               )}
             </div>
             <h2 className="text-xl font-extrabold text-gray-800 dark:text-white mb-2">{alerta.titulo}</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">{alerta.texto}</p>
+            <p className="text-gray-500 dark:text-slate-400 text-sm mb-6">{alerta.texto}</p>
             <button onClick={() => setAlerta(null)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-md text-sm">
               Aceptar
             </button>
-          </div>
-        </div>
-      )}
-
-      {showModalSolicitudes && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={() => setShowModalSolicitudes(false)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-            <div className="bg-orange-500 p-5 text-white flex justify-between items-center">
-              <div>
-                <h2 className="font-extrabold text-lg">Solicitudes de Días Libres</h2>
-                <p className="text-orange-100 text-sm">{solicitudes.length} pendientes de revisión</p>
-              </div>
-              <button onClick={() => setShowModalSolicitudes(false)} className="text-white/80 hover:text-white cursor-pointer bg-orange-600/50 hover:bg-orange-600 p-2 rounded-full transition-colors">✕</button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              {solicitudes.length > 0 ? (
-                solicitudes.map(sol => (
-                  <div key={sol.id_solicitud} className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-xl p-4 shadow-sm flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-gray-800 dark:text-white">{sol.usuarios.nombre}</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Desea el <span className="font-bold text-orange-500">{new Date(sol.fecha_solicitada).toLocaleDateString()}</span> libre</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => gestionarSolicitud(sol.id_solicitud, sol.usuarios.id_usuario, 'aprobada')} className="p-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 rounded-lg font-bold transition-colors cursor-pointer" title="Aprobar">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                      </button>
-                      <button onClick={() => gestionarSolicitud(sol.id_solicitud, sol.usuarios.id_usuario, 'rechazada')} className="p-2 bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-400 rounded-lg font-bold transition-colors cursor-pointer" title="Rechazar">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400 font-bold">No hay solicitudes pendientes.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
-              <h2 className="font-bold">Programar Turno Avanzado</h2>
-              <button onClick={() => setShowModal(false)} className="text-white/80 hover:text-white cursor-pointer">✕</button>
-            </div>
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Seleccionar Empleado</label>
-                <select value={selectedEmpleado} onChange={(e) => setSelectedEmpleado(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="" className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">Elegir de la plantilla...</option>
-                  {empleados.map(emp => <option key={emp.id_usuario} value={emp.id_usuario} className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">{emp.nombre}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Asignar a días específicos</label>
-                <div className="flex flex-wrap gap-2">
-                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(dia => (
-                    <button key={dia} onClick={() => toggleDia(dia)} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${diasSeleccionados.includes(dia) ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 hover:bg-gray-200 dark:hover:bg-slate-600'}`}>{dia}</button>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Tipo de Turno</label>
-                <select value={tipoRepeticion} onChange={(e) => setTipoRepeticion(e.target.value)} className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="unico" className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">Solo esta semana</option>
-                  <option value="semanal" className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">Repetir cada semana</option>
-                  <option value="rotativo" className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">Findes Rotativos</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2">Horario</label>
-                <div className="flex gap-2 mb-3">
-                  <button type="button" onClick={() => {setHoraInicio('08:00'); setHoraFin('15:00');}} className="flex-1 bg-blue-50 dark:bg-slate-700 hover:bg-blue-100 dark:hover:bg-slate-600 text-blue-600 dark:text-blue-400 text-[10px] font-bold py-1.5 rounded-md transition-colors cursor-pointer border border-transparent hover:border-blue-200 dark:hover:border-slate-500">Mañana</button>
-                  <button type="button" onClick={() => {setHoraInicio('15:00'); setHoraFin('22:00');}} className="flex-1 bg-emerald-50 dark:bg-slate-700 hover:bg-emerald-100 dark:hover:bg-slate-600 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold py-1.5 rounded-md transition-colors cursor-pointer border border-transparent hover:border-emerald-200 dark:hover:border-slate-500">Tarde</button>
-                  <button type="button" onClick={() => {setHoraInicio('22:00'); setHoraFin('06:00');}} className="flex-1 bg-purple-50 dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-slate-600 text-purple-600 dark:text-purple-400 text-[10px] font-bold py-1.5 rounded-md transition-colors cursor-pointer border border-transparent hover:border-purple-200 dark:hover:border-slate-500">Noche</button>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <div className="flex items-center bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden flex-1 focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
-                    <select value={horaInicio.split(':')[0]} onChange={(e) => setHoraInicio(`${e.target.value}:${horaInicio.split(':')[1]}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
-                      {horasArray.map(h => <option key={`h-ini-${h}`} value={h} className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">{h}</option>)}
-                    </select>
-                    <span className="text-gray-400 font-bold">:</span>
-                    <select value={horaInicio.split(':')[1]} onChange={(e) => setHoraInicio(`${horaInicio.split(':')[0]}:${e.target.value}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
-                      {minutosArray.map(m => <option key={`m-ini-${m}`} value={m} className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">{m}</option>)}
-                    </select>
-                  </div>
-                  
-                  <span className="text-gray-400 font-bold">-</span>
-                  
-                  <div className="flex items-center bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden flex-1 focus-within:ring-2 focus-within:ring-blue-500 transition-shadow">
-                    <select value={horaFin.split(':')[0]} onChange={(e) => setHoraFin(`${e.target.value}:${horaFin.split(':')[1]}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
-                      {horasArray.map(h => <option key={`h-fin-${h}`} value={h} className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">{h}</option>)}
-                    </select>
-                    <span className="text-gray-400 font-bold">:</span>
-                    <select value={horaFin.split(':')[1]} onChange={(e) => setHoraFin(`${horaFin.split(':')[0]}:${e.target.value}`)} className="bg-transparent p-2.5 text-sm font-bold text-gray-800 dark:text-white outline-none cursor-pointer appearance-none text-center w-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
-                      {minutosArray.map(m => <option key={`m-fin-${m}`} value={m} className="bg-white dark:bg-slate-800 text-gray-800 dark:text-white">{m}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-gray-100 dark:border-slate-700 flex gap-3">
-                <button onClick={handleGuardarTurno} disabled={loading} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm shadow-md cursor-pointer disabled:opacity-50">{loading ? 'Guardando...' : 'Confirmar y Guardar'}</button>
-                <button onClick={() => setShowModal(false)} className="px-6 py-3 bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 font-bold rounded-xl text-sm cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-600">Cerrar</button>
-              </div>
-            </div>
           </div>
         </div>
       )}

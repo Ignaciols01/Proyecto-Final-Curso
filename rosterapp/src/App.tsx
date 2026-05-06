@@ -51,7 +51,7 @@ export default function App() {
           <Route path="configuracion" element={<AdminConfiguracion />} />
         </Route>
 
-        {/* ZONA EMPLEADO (Rutas corregidas para que no den 404) */}
+        {/* ZONA EMPLEADO */}
         <Route path="/empleado" element={<ProtectedRoute allowedRole="empleado"><EmployeeLayout /></ProtectedRoute>}>
           <Route path="turnos" element={<EmployeeMisTurnos />} />
           <Route path="fichaje" element={<EmployeeFichaje />} />

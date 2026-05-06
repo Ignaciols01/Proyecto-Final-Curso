@@ -12,7 +12,8 @@ export default function Fichar() {
   const [historialMilisegundos, setHistorialMilisegundos] = useState<number>(0);
 
   // Estados de Bloqueo
-  const [puedeFichar, setPuedeFichar] = useState(false);
+  const [puedeFicharEntrada, setPuedeFicharEntrada] = useState(false);
+  const [puedeFicharSalida, setPuedeFicharSalida] = useState(false);
   const [mensajeBloqueo, setMensajeBloqueo] = useState('Buscando turnos asignados...');
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function Fichar() {
         if (fichaje.hora_salida) {
           msAcumulados += new Date(fichaje.hora_salida).getTime() - new Date(fichaje.hora_entrada).getTime();
         } else {
-          turnoAbierto = fichaje;
+          turnoAbierto = fichaje; // Encontramos un turno sin salida
         }
       });
 
@@ -77,6 +78,7 @@ export default function Fichar() {
         const ultimoTurno = fichajesData[0];
         const fechaUltimoTurno = new Date(ultimoTurno.hora_entrada).toISOString().split('T')[0];
         
+        // Si el último turno cerrado es de hoy, lo mostramos en pantalla
         if (fechaUltimoTurno === hoyStr) {
             setHoraEntrada(new Date(ultimoTurno.hora_entrada));
             setHoraSalida(new Date(ultimoTurno.hora_salida));
@@ -88,18 +90,31 @@ export default function Fichar() {
   };
 
   const verificarHorario = () => {
-    if (!turnoHoy) {
-      setPuedeFichar(false);
-      setMensajeBloqueo('Hoy tienes el día libre. ¡Descansa!');
+    // REGLA 1 (PRIORIDAD MÁXIMA): Si hay una entrada SIN salida (no importa de qué día sea)
+    if (horaEntrada && !horaSalida) {
+      setPuedeFicharEntrada(false); // No puede volver a entrar
+      setPuedeFicharSalida(true);   // DEBE registrar la salida
+      setMensajeBloqueo('');        // Quitamos cualquier mensaje
       return;
     }
 
+    // REGLA 2: Si ya hizo el ciclo completo de hoy (Entrada y Salida)
     if (horaEntrada && horaSalida) {
-      setPuedeFichar(false);
+      setPuedeFicharEntrada(false);
+      setPuedeFicharSalida(false);
       setMensajeBloqueo('Ya has completado tu jornada de hoy.');
       return;
     }
 
+    // REGLA 3: Si no hay turno hoy
+    if (!turnoHoy) {
+      setPuedeFicharEntrada(false);
+      setPuedeFicharSalida(false);
+      setMensajeBloqueo('Hoy tienes el día libre. ¡Descansa!');
+      return;
+    }
+
+    // REGLA 4: Evaluamos el horario del turno asignado hoy
     const now = currentTime;
     const [hI, mI] = turnoHoy.hora_inicio.split(':').map(Number);
     const [hF, mF] = turnoHoy.hora_fin.split(':').map(Number);
@@ -111,19 +126,22 @@ export default function Fichar() {
     const finPermitido = new Date(finTurno.getTime() + 30 * 60000); // 30 mins después
 
     if (now < inicioPermitido) {
-      setPuedeFichar(false);
+      setPuedeFicharEntrada(false);
+      setPuedeFicharSalida(false);
       setMensajeBloqueo(`Tu turno empieza a las ${turnoHoy.hora_inicio.slice(0,5)}. Podrás fichar 15 minutos antes.`);
     } else if (now > finPermitido) {
-      setPuedeFichar(false);
+      setPuedeFicharEntrada(false);
+      setPuedeFicharSalida(false);
       setMensajeBloqueo('El horario para fichar en este turno ya ha cerrado.');
     } else {
-      setPuedeFichar(true);
+      setPuedeFicharEntrada(true);
+      setPuedeFicharSalida(false); // Solo se activa cuando ya hay entrada
       setMensajeBloqueo('');
     }
   };
 
   const handleRegistrarEntrada = async () => {
-    if (!puedeFichar) return;
+    if (!puedeFicharEntrada) return;
     const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
     const ahora = new Date();
     setLoading(true);
@@ -139,7 +157,7 @@ export default function Fichar() {
   };
 
   const handleRegistrarSalida = async () => {
-    if (!puedeFichar || !registroId) return;
+    if (!puedeFicharSalida || !registroId) return;
     const ahora = new Date();
     setLoading(true);
 
@@ -189,7 +207,7 @@ export default function Fichar() {
           <div className="w-full max-w-sm space-y-4">
             <button 
               onClick={handleRegistrarEntrada}
-              disabled={!puedeFichar || horaEntrada !== null || loading}
+              disabled={!puedeFicharEntrada || horaEntrada !== null || loading}
               className="w-full bg-[#10b981] hover:bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wide text-sm"
             >
               {horaEntrada ? 'Entrada Registrada' : 'Registrar Entrada'}
@@ -197,14 +215,15 @@ export default function Fichar() {
             
             <button 
               onClick={handleRegistrarSalida}
-              disabled={!puedeFichar || horaEntrada === null || horaSalida !== null || loading}
+              disabled={!puedeFicharSalida || loading}
               className="w-full bg-[#334155] hover:bg-slate-600 text-gray-300 font-bold py-4 rounded-xl shadow-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wide text-sm"
             >
               {horaSalida ? 'Salida Registrada' : 'Registrar Salida'}
             </button>
           </div>
 
-          {!puedeFichar && mensajeBloqueo && (
+          {/* El mensaje de bloqueo solo se muestra si NO hay una salida pendiente y aplica alguna restricción */}
+          {(!puedeFicharEntrada && !puedeFicharSalida) && mensajeBloqueo && (
             <p className="mt-6 text-sm font-bold text-orange-400 bg-orange-400/10 px-4 py-2 rounded-lg text-center animate-fade-in">
               {mensajeBloqueo}
             </p>

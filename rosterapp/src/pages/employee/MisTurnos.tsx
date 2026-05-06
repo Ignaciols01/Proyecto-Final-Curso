@@ -8,8 +8,21 @@ interface Turno {
   hora_fin: string;
 }
 
+interface Solicitud {
+  id_solicitud: string;
+  fecha_solicitada: string;
+  estado: string;
+  motivo_rechazo: string | null;
+}
+
 export default function EmployeeMisTurnos() {
   const [turnos, setTurnos] = useState<Turno[]>([]);
+  const [misSolicitudes, setMisSolicitudes] = useState<Solicitud[]>([]);
+  
+  // ESTADOS DEL USUARIO PARA LA BARRA DE PROGRESO
+  const [diasLibres, setDiasLibres] = useState(0);
+  const [findesTrabajados, setFindesTrabajados] = useState(0);
+  
   const [loading, setLoading] = useState(true);
   
   const [fechaReferencia, setFechaReferencia] = useState(new Date());
@@ -22,13 +35,41 @@ export default function EmployeeMisTurnos() {
   const [alerta, setAlerta] = useState<{titulo: string, texto: string, tipo: 'exito' | 'error'} | null>(null);
 
   const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
-
-  // Obtenemos la fecha de hoy en formato YYYY-MM-DD para bloquear días pasados en el calendario
   const hoyStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
-    if (user.id) fetchTurnos();
+    if (user.id) {
+      fetchDatosUsuario();
+      fetchTurnos();
+      fetchMisSolicitudes();
+    }
   }, [fechaReferencia, vistaCalendario]);
+
+  // Carga los días libres disponibles y los findes trabajados
+  const fetchDatosUsuario = async () => {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('dias_libres_disponibles, findes_trabajados')
+      .eq('id_usuario', user.id)
+      .single();
+      
+    if (!error && data) {
+      setDiasLibres(data.dias_libres_disponibles || 0);
+      setFindesTrabajados(data.findes_trabajados || 0);
+    }
+  };
+
+  const fetchMisSolicitudes = async () => {
+    const { data, error } = await supabase
+      .from('solicitudes_libres')
+      .select('*')
+      .eq('id_usuario', user.id);
+    if (!error && data) {
+      setMisSolicitudes(data);
+    }
+    // Refrescamos los datos del usuario por si le acaban de aprobar un día y se lo han descontado
+    fetchDatosUsuario();
+  };
 
   const fetchTurnos = async () => {
     setLoading(true);
@@ -81,15 +122,15 @@ export default function EmployeeMisTurnos() {
         .from('solicitudes_libres')
         .insert([{ id_usuario: user.id, fecha_solicitada: fechaLibre, estado: 'pendiente' }]);
 
-      if (error) throw error; // Si hay error, salta al catch y lo muestra
+      if (error) throw error;
 
       setAlerta({ titulo: '¡Enviado!', texto: 'Tu solicitud ha sido enviada al administrador.', tipo: 'exito' });
       setShowModalLibre(false);
       setFechaLibre('');
+      fetchMisSolicitudes();
     } catch (err: any) {
-      // Ahora mostramos el error EXACTO que da la base de datos
       console.error("Error al solicitar libre:", err);
-      setAlerta({ titulo: 'Error de Base de Datos', texto: err.message || 'No se pudo enviar la solicitud.', tipo: 'error' });
+      setAlerta({ titulo: 'Error', texto: err.message || 'No se pudo enviar la solicitud.', tipo: 'error' });
     } finally {
       setLoading(false);
     }
@@ -148,22 +189,70 @@ export default function EmployeeMisTurnos() {
     return turnos.filter(t => t.fecha === fechaFormat);
   };
 
+  const getSolicitudParaElDia = (fecha: Date) => {
+    const offset = fecha.getTimezoneOffset();
+    const fechaFormat = new Date(fecha.getTime() - (offset*60*1000)).toISOString().split('T')[0];
+    return misSolicitudes.find(s => s.fecha_solicitada === fechaFormat);
+  };
+
+  const tieneSolicitudPendiente = misSolicitudes.some(s => s.estado === 'pendiente');
+  const sinDiasLibres = diasLibres <= 0;
+
   return (
     <div className="p-4 md:p-8 bg-gray-50 dark:bg-slate-900 min-h-screen transition-colors duration-300 max-w-7xl mx-auto">
       
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+      {/* CABECERA CON BARRA DE PROGRESO */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-8 gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-blue-700 dark:text-blue-400">Mis Turnos</h1>
           <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 font-medium">Revisa tu horario y solicita días libres</p>
         </div>
-        <div className="w-full md:w-auto flex">
-          <button 
-            onClick={() => setShowModalLibre(true)} 
-            className="w-full md:w-auto bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            Solicitar Día Libre
-          </button>
+        
+        <div className="flex flex-col sm:flex-row items-stretch gap-4 w-full xl:w-auto">
+          
+          {/* CUADRO DE ESTADÍSTICAS Y PROGRESO */}
+          <div className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex items-center gap-4 flex-1 sm:flex-none">
+            <div>
+              <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Días Libres</p>
+              <p className="text-xl md:text-2xl font-black text-blue-600 dark:text-blue-400 leading-none mt-1">{diasLibres}</p>
+            </div>
+            <div className="h-8 w-px bg-gray-200 dark:bg-slate-700"></div>
+            <div className="min-w-[120px]">
+              <div className="flex justify-between mb-1.5">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Progreso</span>
+                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">{findesTrabajados % 3}/3</span>
+              </div>
+              <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-500" 
+                  style={{ width: `${((findesTrabajados % 3) / 3) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          {/* BOTÓN SOLICITAR DÍA LIBRE */}
+          <div className="flex flex-col gap-1.5 justify-center flex-1 sm:flex-none">
+            <button 
+              onClick={() => setShowModalLibre(true)} 
+              disabled={tieneSolicitudPendiente || sinDiasLibres}
+              className={`w-full text-white font-bold py-3 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 h-full ${
+                (tieneSolicitudPendiente || sinDiasLibres) 
+                  ? 'bg-gray-400 dark:bg-slate-700 cursor-not-allowed text-gray-100' 
+                  : 'bg-orange-500 hover:bg-orange-600 cursor-pointer'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              {tieneSolicitudPendiente ? 'Solicitud en Curso' : sinDiasLibres ? 'Sin días libres' : 'Solicitar Día Libre'}
+            </button>
+            {tieneSolicitudPendiente && (
+              <span className="text-[10px] text-orange-500 font-bold text-center">Debes esperar revisión.</span>
+            )}
+            {!tieneSolicitudPendiente && sinDiasLibres && (
+              <span className="text-[10px] text-gray-400 font-bold text-center">Gana días trabajando findes.</span>
+            )}
+          </div>
+
         </div>
       </div>
 
@@ -193,6 +282,7 @@ export default function EmployeeMisTurnos() {
               const hoy = new Date();
               const esHoy = dia.getDate() === hoy.getDate() && dia.getMonth() === hoy.getMonth() && dia.getFullYear() === hoy.getFullYear();
               const turnosDelDia = getTurnosParaElDia(dia);
+              const sol = getSolicitudParaElDia(dia);
 
               return (
                 <div key={i} onClick={() => setDiaModalSeleccionado(dia)} className={`min-h-[300px] flex flex-col transition-all cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/80 ${esHoy ? 'bg-blue-50/10 dark:bg-slate-800 ring-2 ring-inset ring-blue-500 z-10' : 'bg-white dark:bg-slate-800'}`}>
@@ -200,17 +290,33 @@ export default function EmployeeMisTurnos() {
                     {nombresDiasCortos[dia.getDay()]} {dia.getDate()}
                   </div>
                   <div className="flex-1 flex flex-col p-2 space-y-2 overflow-y-auto pointer-events-none">
+                    
+                    {/* Tarjeta de Día Libre o Solicitud */}
+                    {sol && (
+                      <div className={`p-2 rounded-lg shadow-sm border flex flex-col justify-center ${sol.estado === 'pendiente' ? 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:border-orange-800/50 dark:text-orange-400' : sol.estado === 'aprobada' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-400' : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800/50 dark:text-red-400'}`}>
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest block mb-1">Día Libre</span>
+                        <span className="text-xs font-bold block capitalize">{sol.estado}</span>
+                        {sol.estado === 'rechazada' && sol.motivo_rechazo && (
+                          <span className="text-[9px] mt-1 block italic border-t border-red-200 dark:border-red-800/50 pt-1 leading-tight">Motivo: {sol.motivo_rechazo}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Si está cargando muestra puntos, si no, valida si mostrar el turno */}
                     {loading ? (
                       <div className="h-full flex items-center justify-center"><span className="text-[10px] text-gray-400">...</span></div>
-                    ) : turnosDelDia.length > 0 ? (
-                      turnosDelDia.map(turno => (
-                        <div key={turno.id_turno} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 p-3 rounded-lg shadow-sm">
-                          <span className="text-sm font-extrabold text-blue-700 dark:text-blue-400 block">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="h-full flex items-center justify-center"><span className="font-bold uppercase tracking-widest text-[10px] italic text-gray-300 dark:text-slate-600">Libre</span></div>
-                    )}
+                    ) : !(sol && sol.estado === 'aprobada') ? (
+                      // SOLO mostrar turnos si la solicitud NO está aprobada
+                      turnosDelDia.length > 0 ? (
+                        turnosDelDia.map(turno => (
+                          <div key={turno.id_turno} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 p-3 rounded-lg shadow-sm">
+                            <span className="text-sm font-extrabold text-blue-700 dark:text-blue-400 block">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        !sol && <div className="h-full flex items-center justify-center"><span className="font-bold uppercase tracking-widest text-[10px] italic text-gray-300 dark:text-slate-600">Libre</span></div>
+                      )
+                    ) : null}
                   </div>
                 </div>
               );
@@ -229,13 +335,22 @@ export default function EmployeeMisTurnos() {
                 const hoy = new Date();
                 const esHoy = dia.getDate() === hoy.getDate() && dia.getMonth() === hoy.getMonth() && dia.getFullYear() === hoy.getFullYear();
                 const turnosDelDia = getTurnosParaElDia(dia);
+                const sol = getSolicitudParaElDia(dia);
 
                 return (
                   <div key={i} onClick={() => setDiaModalSeleccionado(dia)} className={`min-h-[120px] bg-white dark:bg-slate-800 p-1 flex flex-col cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${esHoy ? 'ring-2 ring-inset ring-blue-500 relative z-10' : ''}`}>
                     <span className={`text-xs font-bold p-1 w-6 h-6 flex items-center justify-center rounded-full mb-1 ${esHoy ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300'}`}>{dia.getDate()}</span>
-                    <div className="flex-1 overflow-y-auto space-y-1 pointer-events-none">
-                      {turnosDelDia.map(turno => (
-                        <div key={turno.id_turno} className="bg-blue-50 dark:bg-slate-700 px-1.5 py-1 rounded text-xs border border-blue-200 dark:border-slate-600 truncate flex flex-col items-center">
+                    <div className="flex-1 overflow-y-auto space-y-1 pointer-events-none p-0.5">
+                      
+                      {sol && (
+                        <div className={`px-1.5 py-1 rounded text-[9px] border truncate flex flex-col items-center ${sol.estado === 'pendiente' ? 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' : sol.estado === 'aprobada' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
+                          <span className="font-extrabold capitalize">{sol.estado}</span>
+                        </div>
+                      )}
+
+                      {/* En la vista mensual, solo mostramos turnos si NO está aprobada la solicitud */}
+                      {!(sol && sol.estado === 'aprobada') && turnosDelDia.map(turno => (
+                        <div key={turno.id_turno} className="bg-blue-50 dark:bg-slate-700 px-1.5 py-1 rounded text-xs border border-blue-200 dark:border-slate-600 truncate flex flex-col items-center mt-1">
                           <span className="font-extrabold text-blue-700 dark:text-blue-400">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</span>
                         </div>
                       ))}
@@ -248,40 +363,61 @@ export default function EmployeeMisTurnos() {
         )}
       </div>
 
-      {diaModalSeleccionado && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={() => setDiaModalSeleccionado(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="bg-blue-600 p-5 text-white flex justify-between items-center">
-              <div>
-                <h2 className="font-extrabold text-lg">Tu horario</h2>
-                <p className="text-blue-100 text-sm">{diaModalSeleccionado.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              </div>
-              <button onClick={() => setDiaModalSeleccionado(null)} className="text-white/80 hover:text-white cursor-pointer bg-blue-700/50 hover:bg-blue-700 p-2 rounded-full transition-colors">✕</button>
-            </div>
-            
-            <div className="p-6 space-y-4">
-              {getTurnosParaElDia(diaModalSeleccionado).length > 0 ? (
-                getTurnosParaElDia(diaModalSeleccionado).map(turno => (
-                  <div key={turno.id_turno} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-xl p-5 text-center shadow-sm">
-                     <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">Turno Asignado</p>
-                     <p className="text-2xl font-black text-blue-700 dark:text-blue-400">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-500 dark:text-gray-400 font-bold">Tienes el día libre. ¡Aprovéchalo!</p>
-                </div>
-              )}
-            </div>
+      {diaModalSeleccionado && (() => {
+        const turnosModal = getTurnosParaElDia(diaModalSeleccionado);
+        const solModal = getSolicitudParaElDia(diaModalSeleccionado);
 
-            <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80">
-              <button onClick={() => setDiaModalSeleccionado(null)} className="w-full bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-sm text-sm">
-                Cerrar
-              </button>
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={() => setDiaModalSeleccionado(null)}>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="bg-blue-600 p-5 text-white flex justify-between items-center">
+                <div>
+                  <h2 className="font-extrabold text-lg">Tu horario</h2>
+                  <p className="text-blue-100 text-sm">{diaModalSeleccionado.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                </div>
+                <button onClick={() => setDiaModalSeleccionado(null)} className="text-white/80 hover:text-white cursor-pointer bg-blue-700/50 hover:bg-blue-700 p-2 rounded-full transition-colors">✕</button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                {/* Banner de Solicitud en el Modal */}
+                {solModal && (
+                  <div className={`rounded-xl p-5 text-center shadow-sm border mb-4 ${solModal.estado === 'aprobada' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800/50' : solModal.estado === 'pendiente' ? 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:border-orange-800/50' : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800/50'}`}>
+                    <p className="text-xs font-bold uppercase tracking-widest mb-1 opacity-70">Día Libre</p>
+                    <p className="text-2xl font-black capitalize">{solModal.estado}</p>
+                    {solModal.estado === 'rechazada' && solModal.motivo_rechazo && (
+                      <p className="text-sm mt-2 font-medium">Motivo: {solModal.motivo_rechazo}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Si está aprobada, ocultamos los turnos. Si no, los pintamos o mostramos que es libre */}
+                {!(solModal && solModal.estado === 'aprobada') && (
+                  turnosModal.length > 0 ? (
+                    turnosModal.map(turno => (
+                      <div key={turno.id_turno} className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-xl p-5 text-center shadow-sm">
+                         <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">Turno Asignado</p>
+                         <p className="text-2xl font-black text-blue-700 dark:text-blue-400">{turno.hora_inicio.substring(0,5)} - {turno.hora_fin.substring(0,5)}</p>
+                      </div>
+                    ))
+                  ) : (
+                    !solModal && (
+                      <div className="text-center py-6">
+                        <p className="text-gray-500 dark:text-gray-400 font-bold">Tienes el día libre. ¡Aprovéchalo!</p>
+                      </div>
+                    )
+                  )
+                )}
+              </div>
+
+              <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80">
+                <button onClick={() => setDiaModalSeleccionado(null)} className="w-full bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-gray-200 font-bold py-3 rounded-xl transition-colors cursor-pointer shadow-sm text-sm">
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {showModalLibre && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in" onClick={() => setShowModalLibre(false)}>

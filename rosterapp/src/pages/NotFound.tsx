@@ -21,7 +21,7 @@ export default function NotFound() {
         Parece que te has perdido. La ruta que estás buscando no existe o ha sido movida a otro lugar.
       </p>
 
-      {/* Botón de regreso corregido */}
+      {/* Botón de regreso  */}
       <button 
         onClick={() => navigate('/')} // Antes ponía '/login', ahora te lleva a la raíz
         className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-bold py-3.5 px-8 rounded-xl shadow-md transition-colors cursor-pointer flex items-center space-x-2"

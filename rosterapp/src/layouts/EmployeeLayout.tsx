@@ -1,36 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 export default function EmployeeLayout() {
   const navigate = useNavigate();
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [nombreUsuario, setNombreUsuario] = useState('Empleado');
-  const [iniciales, setIniciales] = useState('EM');
+  const [nombreUsuario, setNombreUsuario] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Estados para el buzón de notificaciones
+  const [notificaciones, setNotificaciones] = useState<any[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
 
   useEffect(() => {
     const cargarDatos = () => {
       const userDataString = localStorage.getItem('rosterapp_user');
       if (userDataString) {
         const user = JSON.parse(userDataString);
-        const nombreReal = user.nombre || 'Empleado';
-        setNombreUsuario(nombreReal);
-        setIniciales(nombreReal.substring(0, 2).toUpperCase());
+        setNombreUsuario(user.nombre || 'Empleado');
+        setAvatar(localStorage.getItem(`rosterapp_avatar_${user.id}`));
         
-        // Buscamos el avatar vinculado a este ID de usuario específico
-        const avatarKey = `rosterapp_avatar_${user.id}`;
-        setAvatar(localStorage.getItem(avatarKey));
+        // Al cargar, buscamos si hay notificaciones pendientes
+        fetchNotificaciones(user.id);
+      } else {
+        navigate('/');
       }
     };
 
     cargarDatos();
 
+    // Sincronización de Avatar y Nombre en tiempo real (por si los cambias en Configuración)
     const handleAvatarUpdate = () => {
       const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
-      if (user.id) {
-        setAvatar(localStorage.getItem(`rosterapp_avatar_${user.id}`));
-      }
+      if (user.id) setAvatar(localStorage.getItem(`rosterapp_avatar_${user.id}`));
     };
-
     const handleNameUpdate = () => {
       cargarDatos();
     };
@@ -38,11 +41,39 @@ export default function EmployeeLayout() {
     window.addEventListener('employeeAvatarUpdated', handleAvatarUpdate);
     window.addEventListener('employeeNameUpdated', handleNameUpdate);
     
+    // Bucle inteligente: Preguntamos a la base de datos cada 10 segundos si el Admin nos ha respondido
+    const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
+    const notifInterval = setInterval(() => {
+      if (user.id) fetchNotificaciones(user.id);
+    }, 10000);
+
     return () => {
       window.removeEventListener('employeeAvatarUpdated', handleAvatarUpdate);
       window.removeEventListener('employeeNameUpdated', handleNameUpdate);
+      clearInterval(notifInterval);
     };
-  }, []);
+  }, [navigate]);
+
+  // Función para descargar los avisos
+  const fetchNotificaciones = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('notificaciones')
+      .select('*')
+      .eq('id_usuario', userId)
+      .eq('leida', false)
+      .order('created_at', { ascending: false });
+    
+    if (!error && data) {
+      setNotificaciones(data);
+    }
+  };
+
+  // Función para descartar el aviso una vez leído
+  const marcarComoLeida = async (id: string) => {
+    await supabase.from('notificaciones').update({ leida: true }).eq('id_notificacion', id);
+    // Lo quitamos visualmente de la lista al instante
+    setNotificaciones(prev => prev.filter(n => n.id_notificacion !== id));
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('rosterapp_user');
@@ -50,82 +81,147 @@ export default function EmployeeLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300 flex flex-col font-sans text-gray-900 dark:text-gray-100">
+    <div className="flex flex-col min-h-screen bg-[#0b1120] transition-colors duration-300 font-sans">
       
-      <header className="bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 sticky top-0 z-50 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-2">
-                <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <span className="text-xl font-extrabold text-blue-700 dark:text-blue-400 tracking-tight hidden sm:block">RosterApp</span>
-              </div>
-
-              <nav className="hidden md:flex space-x-1">
-                {/* RUTAS CORREGIDAS A ESPAÑOL SEGÚN TU APP.TSX */}
-                <NavLink to="/empleado/turnos" className={({isActive}) => `px-4 py-2 rounded-lg text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                  Mis Turnos
-                </NavLink>
-                <NavLink to="/empleado/fichaje" className={({isActive}) => `px-4 py-2 rounded-lg text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                  Fichar
-                </NavLink>
-                <NavLink to="/empleado/configuracion" className={({isActive}) => `px-4 py-2 rounded-lg text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                  Configuración
-                </NavLink>
-              </nav>
+      {/* =========================================================
+          CABECERA PRINCIPAL (HEADER)
+          ========================================================= */}
+      <header className="bg-[#0f172a] border-b border-slate-800/80 flex items-center justify-between px-4 md:px-8 py-3 shadow-md z-40 relative">
+        
+        {/* LADO IZQUIERDO: LOGO Y NAVEGACIÓN */}
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
             </div>
-
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-3">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Hola, {nombreUsuario}</span>
-                {avatar ? (
-                  <img src={avatar} alt="Perfil" className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-slate-600 shadow-sm" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
-                    {iniciales}
-                  </div>
-                )}
-              </div>
-              
-              <div className="h-6 w-px bg-gray-200 dark:bg-slate-700 hidden sm:block"></div>
-
-              <button 
-                onClick={handleLogout} 
-                className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer" 
-                title="Cerrar Sesión"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-              </button>
-            </div>
+            <span className="text-xl font-extrabold text-blue-400 tracking-tight">RosterApp</span>
           </div>
-        </div>
 
-        <div className="md:hidden border-t border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
-          <nav className="flex justify-around p-2">
-            <NavLink to="/empleado/turnos" className={({isActive}) => `flex-1 text-center py-2 rounded-lg text-xs font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              Turnos
-            </NavLink>
-            <NavLink to="/empleado/fichaje" className={({isActive}) => `flex-1 text-center py-2 rounded-lg text-xs font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              Fichar
-            </NavLink>
-            <NavLink to="/empleado/configuracion" className={({isActive}) => `flex-1 text-center py-2 rounded-lg text-xs font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              Ajustes
-            </NavLink>
+          {/* Links (Ocultos en móvil) */}
+          <nav className="hidden md:flex items-center gap-2">
+            <NavLink to="/empleado/turnos" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>Mis Turnos</NavLink>
+            <NavLink to="/empleado/fichaje" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>Fichar</NavLink>
+            <NavLink to="/empleado/configuracion" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}>Configuración</NavLink>
           </nav>
         </div>
+
+        {/* LADO DERECHO: NOTIFICACIONES, PERFIL Y LOGOUT */}
+        <div className="hidden md:flex items-center gap-6">
+          
+          {/* ======== CAMPANA DE NOTIFICACIONES ======== */}
+          <div className="relative">
+            <button onClick={() => setShowNotifPanel(!showNotifPanel)} className="relative p-2 text-slate-400 hover:text-white transition-colors cursor-pointer bg-slate-800/50 rounded-full hover:bg-slate-800">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+              {/* Puntito rojo animado si hay avisos sin leer */}
+              {notificaciones.length > 0 && (
+                <span className="absolute top-1 right-1.5 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border border-[#0f172a]"></span>
+                </span>
+              )}
+            </button>
+
+            {/* PANEL DESPLEGABLE DE MENSAJES */}
+            {showNotifPanel && (
+               <div className="absolute right-0 mt-3 w-80 bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 overflow-hidden z-50 animate-fade-in origin-top-right">
+                  <div className="bg-slate-900/80 p-4 border-b border-slate-700 flex justify-between items-center">
+                     <h3 className="text-white font-bold text-sm">Notificaciones</h3>
+                     {notificaciones.length > 0 && <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-2 py-1 rounded-lg font-bold">{notificaciones.length} nuevas</span>}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto hide-scrollbar">
+                     {notificaciones.length > 0 ? (
+                       notificaciones.map(n => (
+                         <div key={n.id_notificacion} className="p-4 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+                           <div className="flex items-start gap-3">
+                             <div className={`mt-1 w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm ${n.titulo.toLowerCase().includes('aprobado') ? 'bg-emerald-500 shadow-emerald-500/50' : 'bg-red-500 shadow-red-500/50'}`}></div>
+                             <div>
+                                <p className="text-sm font-bold text-white leading-tight mb-1.5">{n.titulo}</p>
+                                <p className="text-xs text-slate-300 leading-snug">{n.mensaje}</p>
+                                <button onClick={() => marcarComoLeida(n.id_notificacion)} className="mt-3 text-[10px] bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-600 hover:text-white transition-colors cursor-pointer w-full text-center">
+                                  Entendido (Marcar leída)
+                                </button>
+                             </div>
+                           </div>
+                         </div>
+                       ))
+                     ) : (
+                       <div className="p-8 text-center text-slate-500 text-sm font-medium flex flex-col items-center">
+                         <svg className="w-8 h-8 mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                         Estás al día. No hay avisos.
+                       </div>
+                     )}
+                  </div>
+               </div>
+            )}
+          </div>
+          {/* =========================================== */}
+
+          {/* INFO DE PERFIL */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-white">Hola, {nombreUsuario}</span>
+            {avatar ? (
+              <img src={avatar} alt="Avatar" className="w-9 h-9 rounded-full object-cover border-2 border-slate-700 shadow-sm" />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm border-2 border-slate-700">
+                {nombreUsuario.substring(0, 2).toUpperCase()}
+              </div>
+            )}
+          </div>
+          
+          <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors cursor-pointer" title="Cerrar Sesión">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+          </button>
+        </div>
+
+        {/* BOTÓN HAMBURGUESA MOBILE */}
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden p-2 text-slate-400 hover:text-white">
+           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+             {isMobileMenuOpen ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />}
+           </svg>
+        </button>
       </header>
 
-      <main className="flex-1 overflow-x-hidden">
+      {/* =========================================================
+          MENÚ MÓVIL DESPLEGABLE (Adaptado con notificaciones)
+          ========================================================= */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden bg-[#0f172a] border-b border-slate-800 p-4 animate-fade-in z-30 relative shadow-xl">
+           
+           {/* Notificaciones en versión móvil */}
+           <div className="mb-4 pb-4 border-b border-slate-800">
+              <div className="flex justify-between items-center mb-3">
+                 <span className="text-white font-bold text-sm">Notificaciones ({notificaciones.length})</span>
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                 {notificaciones.length > 0 ? notificaciones.map(n => (
+                    <div key={n.id_notificacion} className="bg-slate-800/80 p-3 rounded-lg border border-slate-700/50">
+                       <p className={`text-xs font-bold mb-1 ${n.titulo.toLowerCase().includes('aprobado') ? 'text-emerald-400' : 'text-red-400'}`}>{n.titulo}</p>
+                       <p className="text-[10px] text-slate-300 leading-tight mb-3">{n.mensaje}</p>
+                       <button onClick={() => marcarComoLeida(n.id_notificacion)} className="w-full text-[10px] bg-slate-700 text-slate-300 py-1.5 rounded font-bold uppercase tracking-wider">Descartar</button>
+                    </div>
+                 )) : (
+                    <p className="text-xs text-slate-500 italic">No hay avisos nuevos.</p>
+                 )}
+              </div>
+           </div>
+
+           <nav className="flex flex-col gap-2">
+            <NavLink to="/empleado/turnos" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>Mis Turnos</NavLink>
+            <NavLink to="/empleado/fichaje" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>Fichar</NavLink>
+            <NavLink to="/empleado/configuracion" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>Configuración</NavLink>
+            <button onClick={handleLogout} className="text-left px-4 py-3 rounded-xl text-sm font-bold text-red-400 hover:bg-red-400/10 mt-2 border-t border-slate-800">Cerrar Sesión</button>
+          </nav>
+        </div>
+      )}
+
+      {/* =========================================================
+          CONTENIDO PRINCIPAL DINÁMICO
+          ========================================================= */}
+      <main className="flex-1 w-full relative z-0">
         <Outlet />
       </main>
-      
     </div>
   );
 }
