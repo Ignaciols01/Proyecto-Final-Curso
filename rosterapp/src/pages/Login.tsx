@@ -1,222 +1,159 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'; 
 
 export default function Login() {
-  const navigate = useNavigate();
-  const [view, setView] = useState<'login' | 'register' | 'forgot'>('login');
-  
-  // Estados para Iniciar Sesión
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  // Estados para Registro
-  const [regNombre, setRegNombre] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regRepetir, setRegRepetir] = useState('');
-
-  const [errorMensaje, setErrorMensaje] = useState('');
+  const [recordarme, setRecordarme] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  // --- FUNCIÓN DE INICIAR SESIÓN ---
+  useEffect(() => {
+    const emailGuardado = localStorage.getItem('rosterapp_remembered_email');
+    if (emailGuardado) {
+      setEmail(emailGuardado);
+      setRecordarme(true);
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMensaje('');
+    setError(null);
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      const { data: usuario, error: errBaseDatos } = await supabase
         .from('usuarios')
         .select('*')
         .eq('email', email)
-        .eq('password', password)
         .single();
 
-      if (error || !data) {
-        setErrorMensaje('Correo o contraseña incorrectos.');
-        setLoading(false);
-        return;
+      if (errBaseDatos || !usuario || usuario.password !== password) {
+        throw new Error('Credenciales incorrectas. Por favor, inténtalo de nuevo.');
       }
 
-      // Guardamos la sesión, ¡AÑADIENDO EL NOMBRE AHORA!
+      if (recordarme) {
+        localStorage.setItem('rosterapp_remembered_email', email);
+      } else {
+        localStorage.removeItem('rosterapp_remembered_email');
+      }
+
       localStorage.setItem('rosterapp_user', JSON.stringify({
-        id: data.id_usuario,
-        email: data.email,
-        rol: data.rol,
-        nombre: data.nombre || data.email.split('@')[0] // Por si el nombre está vacío, mostramos algo
+        id: usuario.id_usuario,
+        nombre: usuario.nombre,
+        email: usuario.email,
+        rol: usuario.rol
       }));
 
-      if (data.rol === 'administrador') {
+      // ==========================================
+      // EL ARREGLO ESTÁ AQUÍ:
+      // Comprobamos el rol exacto de la base de datos y 
+      // usamos las rutas exactas de tu App.tsx
+      // ==========================================
+      if (usuario.rol === 'administrador' || usuario.rol === 'admin') {
         navigate('/admin/dashboard');
       } else {
-        navigate('/empleado/turnos');
+        navigate('/empleado/turnos'); 
       }
 
-    } catch (err) {
-      setErrorMensaje('Error de conexión con la base de datos.');
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión');
     } finally {
       setLoading(false);
     }
-  };
-
-  // --- FUNCIÓN DE REGISTRARSE ---
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMensaje('');
-
-    if (regPassword !== regRepetir) {
-      setErrorMensaje('Las contraseñas no coinciden.');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      // Guardamos al nuevo usuario en Supabase
-      const { error } = await supabase
-        .from('usuarios')
-        .insert([{ 
-          nombre: regNombre,
-          email: regEmail, 
-          password: regPassword,
-          rol: 'empleado' // Todos nacen como empleados por seguridad
-        }]);
-
-      if (error) {
-        setErrorMensaje('El correo ya existe o hubo un error.');
-      } else {
-        alert('¡Cuenta creada con éxito! Ya puedes iniciar sesión.');
-        setView('login');
-      }
-    } catch (err) {
-      setErrorMensaje('Error de conexión.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert('Enlace enviado.');
-    setView('login');
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-white dark:bg-slate-900 transition-colors duration-300">
+    <div className="flex min-h-screen bg-[#0f172a] font-sans">
       
-      <div className="md:w-1/2 bg-[#1d4ed8] flex flex-col items-center justify-center p-12 text-white">
-        <div className="mb-6">
-          <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center border border-white/30">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-            </svg>
-          </div>
+      <div className="hidden md:flex w-1/2 bg-blue-600 flex-col items-center justify-center p-12 text-center">
+        <div className="mb-6 bg-white/20 p-4 rounded-2xl backdrop-blur-sm border border-white/10 shadow-lg">
+          <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
         </div>
-        <h1 className="text-4xl font-extrabold mb-2">RosterApp</h1>
-        <p className="text-sm opacity-90 text-center max-w-xs leading-relaxed">
+        <h1 className="text-5xl font-extrabold text-white mb-4 tracking-tight">RosterApp</h1>
+        <p className="text-blue-100 text-lg max-w-md font-medium">
           Gestión de cuadrantes inteligente para equipos modernos. Simplifica el día a día de tu empresa.
         </p>
       </div>
 
-      <div className="md:w-1/2 flex items-center justify-center p-8">
-        <div className="w-full max-w-sm">
-          
-          {errorMensaje && (
-            <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs font-bold rounded-r">
-              {errorMensaje}
+      <div className="w-full md:w-1/2 flex flex-col items-center justify-center p-8 sm:p-12">
+        <div className="w-full max-w-md">
+          <div className="mb-10">
+            <h2 className="text-3xl font-bold text-white mb-2">Iniciar Sesión</h2>
+            <p className="text-gray-400 text-sm font-medium">Bienvenido de nuevo, por favor introduce tus credenciales.</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-4 rounded-xl text-sm font-bold text-center animate-fade-in">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Correo Electrónico</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="ejemplo@empresa.com"
+                className="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+              />
             </div>
-          )}
 
-          {/* VISTA: INICIAR SESIÓN */}
-          {view === 'login' && (
-            <div className="animate-fade-in">
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Iniciar Sesión</h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-8 font-medium">Bienvenido de nuevo, por favor introduce tus credenciales.</p>
-
-              <form onSubmit={handleLogin} className="space-y-5">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Correo Electrónico</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ejemplo@empresa.com" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Contraseña</label>
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] font-medium">
-                  <label className="flex items-center text-slate-500 dark:text-slate-400 cursor-pointer">
-                    <input type="checkbox" className="mr-2 rounded border-slate-200" /> Recordarme
-                  </label>
-                  <button type="button" onClick={() => {setView('forgot'); setErrorMensaje('');}} className="text-blue-600 dark:text-blue-400 hover:underline">¿Olvidaste tu contraseña?</button>
-                </div>
-
-                <button type="submit" disabled={loading} className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-xs shadow-lg shadow-blue-200 dark:shadow-none transition-all uppercase tracking-wide disabled:opacity-50">
-                  {loading ? 'CONECTANDO...' : 'Acceder al panel'}
-                </button>
-              </form>
-
-              <p className="mt-8 text-center text-[11px] text-slate-400">
-                ¿No tienes una cuenta? <button onClick={() => {setView('register'); setErrorMensaje('');}} className="text-blue-600 font-bold hover:underline">Regístrate aquí</button>
-              </p>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Contraseña</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+              />
             </div>
-          )}
 
-          {/* VISTA: CREAR CUENTA */}
-          {view === 'register' && (
-            <div className="animate-fade-in">
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Crear Cuenta</h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-8 font-medium">Únete a RosterApp y organiza tu equipo hoy mismo.</p>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center space-x-2 cursor-pointer group">
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={recordarme}
+                    onChange={(e) => setRecordarme(e.target.checked)}
+                    className="appearance-none w-5 h-5 border-2 border-slate-600 rounded bg-[#1e293b] checked:bg-blue-600 checked:border-blue-600 transition-colors cursor-pointer"
+                  />
+                  {recordarme && (
+                    <svg className="w-3 h-3 text-white absolute pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  )}
+                </div>
+                <span className="text-xs font-medium text-gray-400 group-hover:text-gray-300 transition-colors">Recordarme</span>
+              </label>
 
-              <form onSubmit={handleRegister} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Nombre Completo</label>
-                  <input type="text" value={regNombre} onChange={(e) => setRegNombre(e.target.value)} placeholder="Ej: Laura Martínez" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Correo Electrónico</label>
-                  <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="ejemplo@empresa.com" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Contraseña</label>
-                    <input type="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} placeholder="••••" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Repetir</label>
-                    <input type="password" value={regRepetir} onChange={(e) => setRegRepetir(e.target.value)} placeholder="••••" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                  </div>
-                </div>
-                <button type="submit" disabled={loading} className="w-full bg-[#0f172a] hover:bg-black text-white font-bold py-3 rounded-lg text-xs mt-4 transition-all uppercase tracking-wide disabled:opacity-50">
-                  {loading ? 'CREANDO...' : 'Crear Cuenta'}
-                </button>
-              </form>
-              <p className="mt-6 text-center text-[11px] text-slate-400">
-                ¿Ya tienes una cuenta? <button onClick={() => {setView('login'); setErrorMensaje('');}} className="text-blue-600 font-bold hover:underline">Inicia sesión</button>
-              </p>
-            </div>
-          )}
-
-          {/* VISTA: OLVIDASTE CONTRASEÑA */}
-          {view === 'forgot' && (
-            <div className="animate-fade-in">
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">Recuperar Acceso</h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-8 font-medium">Introduce tu email para restablecer la contraseña.</p>
-              <form onSubmit={handleResetPassword} className="space-y-6">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Correo Electrónico</label>
-                  <input type="email" placeholder="ejemplo@empresa.com" required className="w-full border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all" />
-                </div>
-                <button type="submit" className="w-full bg-[#2563eb] hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-xs transition-all uppercase tracking-wide">
-                  Enviar instrucciones
-                </button>
-              </form>
-              <button onClick={() => {setView('login'); setErrorMensaje('');}} className="mt-8 w-full text-center text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest">
-                ← Volver al login
+              <button type="button" className="text-xs font-bold text-blue-500 hover:text-blue-400 transition-colors cursor-pointer">
+                ¿Olvidaste tu contraseña?
               </button>
             </div>
-          )}
 
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer disabled:opacity-50 disabled:transform-none"
+            >
+              {loading ? 'ACCEDIENDO...' : 'ACCEDER AL PANEL'}
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-gray-500 mt-8 font-medium">
+            ¿No tienes una cuenta? <button type="button" className="text-blue-500 font-bold hover:text-blue-400 transition-colors cursor-pointer">Regístrate aquí</button>
+          </p>
         </div>
       </div>
     </div>

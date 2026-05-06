@@ -3,39 +3,44 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
-  
-  // Estados para la foto y el nombre
-  const [avatar, setAvatar] = useState<string | null>(localStorage.getItem('rosterapp_admin_avatar'));
-  const [nombreUsuario, setNombreUsuario] = useState('Admin Gerencia');
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [nombreUsuario, setNombreUsuario] = useState('Admin');
   const [iniciales, setIniciales] = useState('AD');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Estado para el menú móvil
 
   useEffect(() => {
-    // 1. Cargar los datos nada más abrir la app
-    cargarDatosAdmin();
+    const cargarDatos = () => {
+      const userDataString = localStorage.getItem('rosterapp_user');
+      if (userDataString) {
+        const user = JSON.parse(userDataString);
+        const nombreReal = user.nombre || 'Admin';
+        setNombreUsuario(nombreReal);
+        setIniciales(nombreReal.substring(0, 2).toUpperCase());
+        
+        const avatarKey = `rosterapp_avatar_${user.id}`;
+        setAvatar(localStorage.getItem(avatarKey));
+      }
+    };
+
+    cargarDatos();
+
+    const handleAvatarUpdate = () => {
+      const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
+      if (user.id) setAvatar(localStorage.getItem(`rosterapp_avatar_${user.id}`));
+    };
+
+    const handleNameUpdate = () => {
+      cargarDatos();
+    };
     
-    // 2. Crear las funciones que escucharán los avisos de la página de Configuración
-    const handleAvatarUpdate = () => setAvatar(localStorage.getItem('rosterapp_admin_avatar'));
-    const handleNameUpdate = () => cargarDatosAdmin();
-
-    // 3. Poner la antena para escuchar los eventos
-    window.addEventListener('adminAvatarUpdated', handleAvatarUpdate);
-    window.addEventListener('adminNameUpdated', handleNameUpdate);
-
+    window.addEventListener('employeeAvatarUpdated', handleAvatarUpdate);
+    window.addEventListener('employeeNameUpdated', handleNameUpdate);
+    
     return () => {
-      window.removeEventListener('adminAvatarUpdated', handleAvatarUpdate);
-      window.removeEventListener('adminNameUpdated', handleNameUpdate);
+      window.removeEventListener('employeeAvatarUpdated', handleAvatarUpdate);
+      window.removeEventListener('employeeNameUpdated', handleNameUpdate);
     };
   }, []);
-
-  const cargarDatosAdmin = () => {
-    const userDataString = localStorage.getItem('rosterapp_user');
-    if (userDataString) {
-      const user = JSON.parse(userDataString);
-      const nombreReal = user.nombre || 'Admin Gerencia';
-      setNombreUsuario(nombreReal);
-      setIniciales(nombreReal.substring(0, 2).toUpperCase());
-    }
-  };
 
   const handleLogout = () => {
     localStorage.removeItem('rosterapp_user');
@@ -43,82 +48,112 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
+    <div className="flex h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300 font-sans print:h-auto print:bg-white overflow-hidden">
       
       {/* =========================================================
-          BARRA LATERAL (SIDEBAR)
+          CABECERA MÓVIL 
           ========================================================= */}
-      <aside className="w-64 bg-white dark:bg-slate-800 border-r border-gray-100 dark:border-slate-700 flex flex-col justify-between transition-colors duration-300 z-50 shadow-sm hidden md:flex">
-        
-        <div>
-          {/* Logo */}
-          <div className="h-16 flex items-center px-6 border-b border-gray-100 dark:border-slate-700">
-            <span className="text-xl font-extrabold text-blue-700 dark:text-blue-400 tracking-tight">RosterApp</span>
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between px-4 z-40 print:hidden shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
           </div>
+          <span className="text-lg font-extrabold text-blue-700 dark:text-blue-400 tracking-tight">RosterApp</span>
+        </div>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {isMobileMenuOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+      </div>
 
-          {/* Menú de Navegación */}
-          <div className="p-4 space-y-1">
-            <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest px-2 mb-2 mt-2">Gestión</p>
-            
-            <NavLink to="/admin/dashboard" className={({isActive}) => `flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              <span>📅</span><span>Calendario</span>
-            </NavLink>
-            
-            <NavLink to="/admin/empleados" className={({isActive}) => `flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              <span>👥</span><span>Empleados</span>
-            </NavLink>
-            
-            <NavLink to="/admin/informes" className={({isActive}) => `flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              <span>📊</span><span>Informes</span>
-            </NavLink>
-            
-            <div className="h-4"></div>
-            
-            <NavLink to="/admin/configuracion" className={({isActive}) => `flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-              <span>⚙️</span><span>Configuración</span>
-            </NavLink>
-          </div>
+      {/* FONDO OSCURO PARA MÓVIL CUANDO EL MENÚ ESTÁ ABIERTO */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* =========================================================
+          BARRA LATERAL (SIDEBAR) 
+          ========================================================= */}
+      <aside className={`
+        fixed md:static top-0 left-0 h-full w-64 bg-white dark:bg-slate-800 border-r border-gray-100 dark:border-slate-700 flex flex-col transition-transform duration-300 z-50 print:hidden
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        
+        {/* LOGO ESCRITORIO */}
+        <div className="hidden md:flex p-6 border-b border-gray-100 dark:border-slate-700 items-center gap-3">
+           <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+          <h1 className="text-2xl font-extrabold text-blue-700 dark:text-blue-400 tracking-tight">RosterApp</h1>
         </div>
 
-        {/* Perfil del Admin */}
+        {/* LOGO MÓVIL */}
+        <div className="md:hidden p-5 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
+          <span className="font-extrabold text-gray-800 dark:text-white">Menú</span>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* NAVEGACIÓN */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto hide-scrollbar">
+          <p className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 mt-4 md:mt-0">Gestión</p>
+          
+          <NavLink to="/admin/dashboard" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+            <span>📅</span> Calendario
+          </NavLink>
+          <NavLink to="/admin/empleados" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+            <span>👥</span> Empleados
+          </NavLink>
+          <NavLink to="/admin/informes" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+            <span>📊</span> Informes
+          </NavLink>
+          <NavLink to="/admin/configuracion" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-700 text-blue-700 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+            <span>⚙️</span> Configuración
+          </NavLink>
+        </nav>
+
+        {/* PERFIL INFERIOR */}
         <div className="p-4 border-t border-gray-100 dark:border-slate-700">
-          <div className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-xl p-3 flex items-center space-x-3 mb-3 transition-colors">
-            
-            {/* COMPROBACIÓN DEL AVATAR */}
+          <div className="bg-gray-50 dark:bg-slate-900 rounded-xl p-4 flex items-center gap-3 border border-gray-100 dark:border-slate-700 mb-3 shadow-sm">
             {avatar ? (
-              <img src={avatar} alt="Perfil" className="w-9 h-9 rounded-full object-cover shadow-sm border border-gray-200 dark:border-slate-500 flex-shrink-0" />
+              <img src={avatar} alt="Perfil" className="w-10 h-10 rounded-full object-cover border-2 border-white dark:border-slate-600 shadow-sm flex-shrink-0" />
             ) : (
-              <div className="w-9 h-9 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm border-2 border-white dark:border-slate-600 flex-shrink-0">
                 {iniciales}
               </div>
             )}
-            
-            <div className="flex-1 overflow-hidden">
-              <p className="text-[9px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest leading-none mb-1">Conectado como</p>
-              <p className="text-xs font-bold text-gray-800 dark:text-gray-100 truncate leading-none">{nombreUsuario}</p>
+            <div className="overflow-hidden">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Conectado como</p>
+              <p className="text-sm font-bold text-gray-800 dark:text-white truncate">{nombreUsuario}</p>
             </div>
           </div>
           
-          <button onClick={handleLogout} className="w-full text-center text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 transition-colors uppercase tracking-widest cursor-pointer">
+          <button onClick={handleLogout} className="w-full text-center py-2.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors cursor-pointer uppercase tracking-wider">
             Cerrar Sesión
           </button>
         </div>
-        
       </aside>
 
       {/* =========================================================
-          CONTENIDO PRINCIPAL
+          CONTENIDO PRINCIPA
           ========================================================= */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Cabecera para móviles si reduces la pantalla */}
-        <div className="md:hidden bg-white dark:bg-slate-800 h-14 border-b border-gray-100 dark:border-slate-700 flex items-center px-4">
-           <span className="text-lg font-extrabold text-blue-700 dark:text-blue-400">RosterApp</span>
-        </div>
-        
-        {/* Aquí se cargan las páginas (Dashboard, Configuracion, etc) */}
+      <main className="flex-1 overflow-y-auto mt-16 md:mt-0 print:overflow-visible relative z-0">
         <Outlet />
       </main>
-
+      
     </div>
   );
 }
