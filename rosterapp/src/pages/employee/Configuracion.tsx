@@ -3,21 +3,20 @@ import { supabase } from '../../lib/supabase';
 
 export default function Configuracion() {
   const [activeTab, setActiveTab] = useState<'perfil' | 'seguridad' | 'preferencias'>('perfil');
+  const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
   
   // ================= PERFIL Y AVATAR =================
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(localStorage.getItem('rosterapp_employee_avatar'));
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(localStorage.getItem(`rosterapp_avatar_${user.id}`));
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState('');
   const [mensajePerfil, setMensajePerfil] = useState<{texto: string, tipo: 'error' | 'exito'} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
     setNombre(user.nombre || 'Empleado');
     setCorreo(user.email || 'correo@empresa.com');
   }, []);
 
-  // Lógica del Avatar (Solo previsualización, no guarda todavía)
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -49,8 +48,6 @@ export default function Configuracion() {
         ctx?.drawImage(img, 0, 0, width, height);
         
         const base64Reducida = canvas.toDataURL('image/jpeg', 0.8);
-        
-        // SOLO actualizamos el estado visual (previsualización)
         setAvatarUrl(base64Reducida);
       };
       img.src = event.target?.result as string;
@@ -58,12 +55,18 @@ export default function Configuracion() {
     reader.readAsDataURL(file);
   };
 
+  // Función para quitar el avatar visualmente antes de guardar
+  const handleBorrarAvatar = () => {
+    setAvatarUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''; // Limpiamos el input de archivos
+    }
+  };
+
   const handleGuardarPerfil = async () => {
     setMensajePerfil(null);
-    const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
     if (!user.id) return;
 
-    // Actualizamos el nombre en Supabase
     const { error } = await supabase
       .from('usuarios')
       .update({ nombre: nombre })
@@ -72,20 +75,21 @@ export default function Configuracion() {
     if (error) {
       setMensajePerfil({ texto: 'Error al guardar el perfil en la base de datos.', tipo: 'error' });
     } else {
-      // 1. Actualizamos la memoria local con el nuevo nombre
       user.nombre = nombre;
       localStorage.setItem('rosterapp_user', JSON.stringify(user));
       
-      // 2. AHORA SÍ guardamos el avatar definitivamente en la memoria
+      // Si hay avatar, lo guardamos. Si es null (porque lo ha borrado), lo eliminamos.
       if (avatarUrl) {
-        localStorage.setItem('rosterapp_employee_avatar', avatarUrl);
-        window.dispatchEvent(new Event('employeeAvatarUpdated'));
+        localStorage.setItem(`rosterapp_avatar_${user.id}`, avatarUrl);
+      } else {
+        localStorage.removeItem(`rosterapp_avatar_${user.id}`);
       }
+      
+      // Lanzamos los eventos para que la barra superior se actualice al instante
+      window.dispatchEvent(new Event('employeeAvatarUpdated'));
+      window.dispatchEvent(new Event('employeeNameUpdated'));
 
       setMensajePerfil({ texto: '¡Perfil actualizado correctamente!', tipo: 'exito' });
-      
-      // 3. Avisamos al menú superior para que cambie el nombre en pantalla
-      window.dispatchEvent(new Event('employeeNameUpdated'));
     }
   };
 
@@ -102,7 +106,6 @@ export default function Configuracion() {
       return;
     }
 
-    const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
     if (!user.id) return;
 
     const { data: usuarioData, error: errorBusqueda } = await supabase
@@ -191,9 +194,20 @@ export default function Configuracion() {
                 
                 <div>
                   <input type="file" accept="image/*" ref={fileInputRef} onChange={handleAvatarChange} className="hidden" />
-                  <button onClick={() => fileInputRef.current?.click()} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 font-bold py-2 px-4 rounded-lg shadow-sm hover:border-blue-300 dark:hover:border-blue-500 transition-colors text-xs md:text-sm cursor-pointer mb-2">
-                    Cambiar Avatar
-                  </button>
+                  
+                  {/* BOTONERA DE AVATAR ACTUALIZADA */}
+                  <div className="flex flex-wrap justify-center sm:justify-start gap-2 mb-2">
+                    <button onClick={() => fileInputRef.current?.click()} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 font-bold py-2 px-4 rounded-lg shadow-sm hover:border-blue-300 dark:hover:border-blue-500 transition-colors text-xs md:text-sm cursor-pointer">
+                      Cambiar Avatar
+                    </button>
+                    
+                    {avatarUrl && (
+                      <button onClick={handleBorrarAvatar} className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 font-bold py-2 px-4 rounded-lg shadow-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-xs md:text-sm cursor-pointer">
+                        Borrar
+                      </button>
+                    )}
+                  </div>
+
                   <p className="text-[10px] md:text-xs text-gray-400 dark:text-gray-500 font-medium">Se redimensionará automáticamente.</p>
                 </div>
               </div>
