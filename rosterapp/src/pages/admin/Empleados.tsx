@@ -62,22 +62,40 @@ export default function Empleados() {
     setEmpleadoAEliminar({ id, email });
   };
 
-  // Función que realmente ejecuta el borrado
+  // Función que realmente ejecuta el borrado (MODIFICADA PARA BORRAR TURNOS PRIMERO)
   const confirmarEliminacion = async () => {
     if (!empleadoAEliminar) return;
 
-    const { error } = await supabase
-      .from('usuarios')
-      .delete()
-      .eq('id_usuario', empleadoAEliminar.id);
+    try {
+      // 1. PRIMERO: Borrar todos los turnos asignados a este empleado
+      const { error: errorTurnos } = await supabase
+        .from('asignaciones') // ¡OJO! Cambia 'asignaciones' si tu tabla de turnos se llama diferente (ej: 'turnos')
+        .delete()
+        .eq('id_usuario', empleadoAEliminar.id);
 
-    if (error) {
-      alert('Error al eliminar: ' + error.message);
-    } else {
-      setEmpleados(empleados.filter(emp => emp.id_usuario !== empleadoAEliminar.id));
+      if (errorTurnos) {
+        console.error("Error al borrar los turnos del empleado:", errorTurnos.message);
+        alert('Error al limpiar los turnos del empleado.');
+        return; // Detenemos el proceso si falla el borrado de turnos
+      }
+
+      // 2. SEGUNDO: Borrar al empleado de la tabla de usuarios
+      const { error: errorUsuario } = await supabase
+        .from('usuarios')
+        .delete()
+        .eq('id_usuario', empleadoAEliminar.id);
+
+      if (errorUsuario) {
+        alert('Error al eliminar el empleado: ' + errorUsuario.message);
+      } else {
+        // Actualizamos la vista quitando al empleado de la lista
+        setEmpleados(empleados.filter(emp => emp.id_usuario !== empleadoAEliminar.id));
+      }
+    } catch (err) {
+      console.error("Error inesperado durante la eliminación:", err);
+    } finally {
+      setEmpleadoAEliminar(null); // Cierra el modal siempre al final
     }
-    
-    setEmpleadoAEliminar(null); // Cierra el modal
   };
 
   return (
