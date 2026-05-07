@@ -161,7 +161,8 @@ export default function AdminDashboard() {
         const formated = dataTurnos.map((t: any) => ({
           ...t,
           usuarios: t.asignaciones ? t.asignaciones.map((a: any) => a.usuarios).filter(Boolean) : []
-        }));
+        })).filter((t: any) => t.usuarios.length > 0); // <-- ¡AQUÍ ESTÁ EL FILTRO ANTI-FANTASMAS!
+        
         setTurnosCalendario(formated);
       }
 
