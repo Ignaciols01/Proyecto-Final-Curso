@@ -149,6 +149,44 @@ export default function Configuracion() {
     }
   };
 
+  // NUEVO: Estado para el interruptor de correos
+  const [notificaciones, setNotificaciones] = useState(true);
+
+  // NUEVO: Leer preferencia de Supabase al cargar
+  useEffect(() => {
+    async function cargarPreferenciasCorreos() {
+      if (!user.id) return;
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('recibir_correos')
+        .eq('id_usuario', user.id)
+        .single();
+        
+      if (data && !error) {
+        setNotificaciones(data.recibir_correos);
+      }
+    }
+    cargarPreferenciasCorreos();
+  }, [user.id]);
+
+  // NUEVO: Guardar en Supabase al hacer clic
+  const handleToggleNotificaciones = async () => {
+    const nuevoEstado = !notificaciones;
+    setNotificaciones(nuevoEstado); // Cambiamos la vista inmediatamente
+
+    if (!user.id) return;
+
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ recibir_correos: nuevoEstado })
+      .eq('id_usuario', user.id);
+
+    if (error) {
+      console.error("Error al guardar preferencia:", error);
+      setNotificaciones(!nuevoEstado); // Revertimos si hay error
+    }
+  };
+
   return (
     <div className="bg-transparent transition-colors duration-300">
       
@@ -282,7 +320,7 @@ export default function Configuracion() {
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-medium">Recibe un aviso cuando se te asigne o modifique un turno.</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                    <input type="checkbox" className="sr-only peer" defaultChecked />
+                    <input type="checkbox" className="sr-only peer" checked={notificaciones} onChange={handleToggleNotificaciones} />
                     <div className="w-11 h-6 bg-gray-200 dark:bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 dark:peer-checked:bg-blue-500"></div>
                   </label>
                 </div>
