@@ -17,11 +17,23 @@ interface Solicitud {
   usuarios: { id_usuario: string, nombre: string };
 }
 
+// Nueva interfaz para las alertas visuales
+interface AlertaPlanificacion {
+  id_usuario: string;
+  nombre: string;
+  ultimaFecha: string | null;
+  diasRestantes: number;
+  nivel: 'critico' | 'aviso';
+}
+
 export default function AdminDashboard() {
   const [totalEmpleados, setTotalEmpleados] = useState(0);
   const [turnosSemana, setTurnosSemana] = useState(0);
   const [loading, setLoading] = useState(true);
   
+  // Estado para las nuevas alertas visuales
+  const [alertasPlanificacion, setAlertasPlanificacion] = useState<AlertaPlanificacion[]>([]);
+
   const [showModal, setShowModal] = useState(false);
   const [empleados, setEmpleados] = useState<{id_usuario: string, nombre: string}[]>([]);
   const [selectedEmpleado, setSelectedEmpleado] = useState('');
@@ -54,17 +66,68 @@ export default function AdminDashboard() {
   const minutosArray = ['00', '15', '30', '45'];
 
   useEffect(() => {
-    fetchStats();
-    fetchEmpleados();
-    fetchSolicitudes();
+    cargarTodo();
   }, []);
 
   useEffect(() => {
     fetchTurnosCalendario();
   }, [fechaReferencia, vistaCalendario]);
 
-  const fetchStats = async () => {
+  const cargarTodo = async () => {
     setLoading(true);
+    await Promise.all([
+      fetchStats(),
+      fetchEmpleados(),
+      fetchSolicitudes()
+    ]);
+  };
+
+  useEffect(() => {
+    if (empleados.length > 0) {
+      comprobarHuecosPlanificacion();
+    }
+  }, [empleados]);
+
+  // =========================================================================
+  // LÓGICA DE DETECCIÓN DE HUECOS EN LA PLANIFICACIÓN (Visual)
+  // =========================================================================
+  const comprobarHuecosPlanificacion = async () => {
+    const nuevasAlertas: AlertaPlanificacion[] = [];
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    for (const emp of empleados) {
+      const { data } = await supabase
+        .from('asignaciones')
+        .select('turnos(fecha)')
+        .eq('id_usuario', emp.id_usuario)
+        .order('id_turno', { foreignTable: 'turnos', ascending: false })
+        .limit(1);
+
+      const ultimoTurno = data && data[0]?.turnos ? new Date((data[0].turnos as any).fecha) : null;
+      
+      let diasRestantes = 0;
+      if (ultimoTurno) {
+        const diffTime = ultimoTurno.getTime() - hoy.getTime();
+        diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      } else {
+        diasRestantes = -1;
+      }
+
+      if (diasRestantes < 21) {
+        nuevasAlertas.push({
+          id_usuario: emp.id_usuario,
+          nombre: emp.nombre,
+          ultimaFecha: ultimoTurno ? ultimoTurno.toLocaleDateString('es-ES') : 'Nunca',
+          diasRestantes: diasRestantes,
+          nivel: diasRestantes < 7 ? 'critico' : 'aviso'
+        });
+      }
+    }
+    setAlertasPlanificacion(nuevasAlertas.sort((a, b) => a.diasRestantes - b.diasRestantes));
+  };
+
+  const fetchStats = async () => {
     try {
       const { count: countEmp } = await supabase.from('usuarios').select('*', { count: 'exact', head: true }).eq('rol', 'empleado');
       setTotalEmpleados(countEmp || 0);
@@ -77,8 +140,6 @@ export default function AdminDashboard() {
       setTurnosSemana(countTurnos || 0);
     } catch (err) {
       console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -161,7 +222,7 @@ export default function AdminDashboard() {
         const formated = dataTurnos.map((t: any) => ({
           ...t,
           usuarios: t.asignaciones ? t.asignaciones.map((a: any) => a.usuarios).filter(Boolean) : []
-        })).filter((t: any) => t.usuarios.length > 0); // <-- ¡AQUÍ ESTÁ EL FILTRO ANTI-FANTASMAS!
+        })).filter((t: any) => t.usuarios.length > 0); 
         
         setTurnosCalendario(formated);
       }
@@ -201,8 +262,6 @@ export default function AdminDashboard() {
       if (tipoRepeticion === 'semanal') semanasAGenerar = 12;
       if (tipoRepeticion === 'rotativo') semanasAGenerar = 12;
 
-      let findesSumados = 0;
-
       for (let i = 0; i < semanasAGenerar; i++) {
         if (tipoRepeticion === 'rotativo' && i % 2 !== 0) continue;
 
@@ -211,8 +270,6 @@ export default function AdminDashboard() {
           fechaTurno.setDate(lunesDeEstaSemana.getDate() + mapaDias[diaNombre] + (i * 7));
           const fechaString = fechaTurno.toISOString().split('T')[0];
 
-          if (diaNombre === 'Sáb' || diaNombre === 'Dom') findesSumados++;
-
           const { data: nuevoTurno, error: errorTurno } = await supabase
             .from('turnos')
             .insert([{ fecha: fechaString, hora_inicio: horaInicio, hora_fin: horaFin, tipo: tipoRepeticion }])
@@ -220,33 +277,14 @@ export default function AdminDashboard() {
 
           if (errorTurno) throw errorTurno;
 
-          const { error: errorAsig } = await supabase
-            .from('asignaciones')
-            .insert([{ id_usuario: selectedEmpleado, id_turno: nuevoTurno.id_turno }]);
-
-          if (errorAsig) throw errorAsig;
-        }
-      }
-
-      if (findesSumados > 0) {
-        const { data: uData } = await supabase.from('usuarios').select('findes_trabajados').eq('id_usuario', selectedEmpleado).single();
-        if (uData) {
-          const totalFindes = uData.findes_trabajados + findesSumados;
-          const diasLibresNuevos = Math.floor(totalFindes / 3);
-          
-          await supabase.from('usuarios').update({ findes_trabajados: totalFindes }).eq('id_usuario', selectedEmpleado);
-          
-          if (diasLibresNuevos > 0) {
-            const { data: dData } = await supabase.from('usuarios').select('dias_libres_disponibles').eq('id_usuario', selectedEmpleado).single();
-            await supabase.from('usuarios').update({ dias_libres_disponibles: (dData?.dias_libres_disponibles || 0) + diasLibresNuevos }).eq('id_usuario', selectedEmpleado);
-          }
+          await supabase.from('asignaciones').insert([{ id_usuario: selectedEmpleado, id_turno: nuevoTurno.id_turno }]);
         }
       }
 
       setAlerta({ titulo: '¡Éxito!', texto: 'Los turnos se han programado correctamente.', tipo: 'exito' });
       setShowModal(false);
       setDiasSeleccionados([]);
-      fetchStats(); 
+      cargarTodo(); 
       fetchTurnosCalendario();
       
     } catch (err: any) {
@@ -262,54 +300,26 @@ export default function AdminDashboard() {
       return;
     }
 
-    if (borrarFechaInicio > borrarFechaFin) {
-      setAlerta({ titulo: 'Error en fechas', texto: 'La fecha de inicio no puede ser posterior a la fecha de fin.', tipo: 'error' });
-      return;
-    }
-
     setLoading(true);
     try {
-      const { data: turnosEnRango, error: errTurnos } = await supabase
-        .from('turnos')
-        .select('id_turno')
-        .gte('fecha', borrarFechaInicio)
-        .lte('fecha', borrarFechaFin);
+      const { data: turnosEnRango } = await supabase.from('turnos').select('id_turno').gte('fecha', borrarFechaInicio).lte('fecha', borrarFechaFin);
+      const ids = turnosEnRango?.map(t => t.id_turno) || [];
 
-      if (errTurnos) throw errTurnos;
-      const idsTurnosEnRango = turnosEnRango.map(t => t.id_turno);
-
-      if (idsTurnosEnRango.length === 0) {
-        setAlerta({ titulo: 'Sin resultados', texto: 'No hay turnos registrados en ese rango de fechas.', tipo: 'error' });
-        setLoading(false);
-        return;
-      }
-
-      const { data: asignaciones, error: errAsig } = await supabase
-        .from('asignaciones')
-        .select('id_turno')
-        .eq('id_usuario', borrarEmpleado)
-        .in('id_turno', idsTurnosEnRango);
-
-      if (errAsig) throw errAsig;
-      const idsTurnosABorrar = asignaciones.map(a => a.id_turno);
-
-      if (idsTurnosABorrar.length > 0) {
-        await supabase.from('asignaciones').delete().in('id_turno', idsTurnosABorrar);
-        await supabase.from('turnos').delete().in('id_turno', idsTurnosABorrar);
+      if (ids.length > 0) {
+        const { data: asig } = await supabase.from('asignaciones').select('id_turno').eq('id_usuario', borrarEmpleado).in('id_turno', ids);
+        const idsBorrar = asig?.map(a => a.id_turno) || [];
         
-        setAlerta({ titulo: '¡Limpieza completada!', texto: `Se han eliminado ${idsTurnosABorrar.length} turnos del empleado seleccionado.`, tipo: 'exito' });
-        setShowModalBorrar(false);
-        setBorrarEmpleado('');
-        setBorrarFechaInicio('');
-        setBorrarFechaFin('');
-        fetchTurnosCalendario();
-        fetchStats();
-      } else {
-        setAlerta({ titulo: 'Sin resultados', texto: 'El empleado no tiene turnos asignados en esas fechas.', tipo: 'error' });
+        if (idsBorrar.length > 0) {
+          await supabase.from('asignaciones').delete().in('id_turno', idsBorrar);
+          await supabase.from('turnos').delete().in('id_turno', idsBorrar);
+          setAlerta({ titulo: '¡Éxito!', texto: 'Turnos eliminados correctamente.', tipo: 'exito' });
+          setShowModalBorrar(false);
+          cargarTodo();
+          fetchTurnosCalendario();
+        }
       }
-
     } catch (error) {
-      setAlerta({ titulo: 'Error', texto: 'Hubo un problema al intentar borrar los turnos.', tipo: 'error' });
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -318,30 +328,24 @@ export default function AdminDashboard() {
   const confirmarEliminacion = async () => {
     if (!elementoAEliminar) return;
     setLoading(true);
-
     try {
       if (elementoAEliminar.tipo === 'unico') {
         await supabase.from('asignaciones').delete().eq('id_turno', elementoAEliminar.idTurno);
         await supabase.from('turnos').delete().eq('id_turno', elementoAEliminar.idTurno);
-        setAlerta({ titulo: 'Eliminado', texto: 'El turno individual se ha borrado con éxito.', tipo: 'exito' });
       } 
       else if (elementoAEliminar.tipo === 'dia') {
         const turnosDelDia = getTurnosParaElDia(elementoAEliminar.fecha);
         const ids = turnosDelDia.map(t => t.id_turno);
-        
         if (ids.length > 0) {
           await supabase.from('asignaciones').delete().in('id_turno', ids);
           await supabase.from('turnos').delete().in('id_turno', ids);
-          setAlerta({ titulo: 'Día vaciado', texto: 'Todos los turnos de este día han sido eliminados.', tipo: 'exito' });
         }
         setDiaModalSeleccionado(null);
       }
-
+      cargarTodo();
       fetchTurnosCalendario();
-      fetchStats();
-      
     } catch (error) {
-      setAlerta({ titulo: 'Error', texto: 'Hubo un error al intentar borrar en la base de datos.', tipo: 'error' });
+      console.error(error);
     } finally {
       setElementoAEliminar(null);
       setLoading(false);
@@ -409,55 +413,56 @@ export default function AdminDashboard() {
   return (
     <div className="p-4 md:p-8 bg-gray-50 dark:bg-[#0f172a] min-h-screen transition-colors duration-300">
       
-      {/* CABECERA Y BOTONES DEL DASHBOARD */}
+      {/* CABECERA */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-blue-700 dark:text-blue-500 transition-colors duration-300">Panel de Control</h1>
           <p className="text-sm md:text-base text-gray-500 dark:text-slate-400 font-medium transition-colors duration-300">Gestión inteligente de tus turnos y equipo</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
-          
-          <button 
-            onClick={() => setShowModalSolicitudes(true)}
-            className={`flex-1 sm:flex-none justify-center font-bold py-3 px-5 rounded-lg shadow-sm transition-all duration-300 cursor-pointer flex items-center gap-2 border ${solicitudes.length > 0 ? 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-500 animate-pulse' : 'bg-white dark:bg-[#1e293b] border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300'}`}
-          >
-            <span>🛎️</span> Solicitudes ({solicitudes.length})
-          </button>
-          
-          <button onClick={() => setShowModalBorrar(true)} className="flex-1 sm:flex-none justify-center bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 border border-transparent dark:border-red-500/30 font-bold py-3 px-4 rounded-lg shadow-sm transition-all duration-300 cursor-pointer">
-            - BORRAR TURNOS
-          </button>
-
-          <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors duration-300 cursor-pointer">
-            + CREAR TURNO
-          </button>
+          <button onClick={() => setShowModalSolicitudes(true)} className={`flex-1 sm:flex-none justify-center font-bold py-3 px-5 rounded-lg shadow-sm transition-all duration-300 cursor-pointer flex items-center gap-2 border ${solicitudes.length > 0 ? 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-500 animate-pulse' : 'bg-white dark:bg-[#1e293b] border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300'}`}><span>🛎️</span> Solicitudes ({solicitudes.length})</button>
+          <button onClick={() => setShowModalBorrar(true)} className="flex-1 sm:flex-none justify-center bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 font-bold py-3 px-4 rounded-lg shadow-sm transition-all cursor-pointer">- BORRAR TURNOS</button>
+          <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors cursor-pointer">+ CREAR TURNO</button>
         </div>
       </div>
 
+      {/* ALERTAS DE PLANIFICACIÓN VISUALES */}
+      {alertasPlanificacion.length > 0 && (
+        <div className="mb-8 animate-fade-in">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">⚠️</span>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white uppercase tracking-wider">Alertas de Planificación</h2>
+          </div>
+          <div className="flex flex-row overflow-x-auto gap-4 pb-4 hide-scrollbar">
+            {alertasPlanificacion.map((alerta) => (
+              <div 
+                key={alerta.id_usuario}
+                onClick={() => { setSelectedEmpleado(alerta.id_usuario); setShowModal(true); }}
+                className={`flex-shrink-0 w-64 p-5 rounded-2xl border-l-8 shadow-sm transition-all hover:scale-[1.02] cursor-pointer ${alerta.nivel === 'critico' ? 'bg-red-50 dark:bg-red-500/10 border-red-500' : 'bg-orange-50 dark:bg-orange-500/10 border-orange-400'}`}
+              >
+                <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1">Falta de turnos</p>
+                <h3 className="font-extrabold text-gray-800 dark:text-white text-base truncate">{alerta.nombre}</h3>
+                <div className="mt-3 space-y-1">
+                  <p className="text-xs font-bold text-gray-600 dark:text-gray-300">Último turno: <span className="text-gray-800 dark:text-white">{alerta.ultimaFecha}</span></p>
+                  <p className={`text-sm font-black ${alerta.nivel === 'critico' ? 'text-red-600' : 'text-orange-600'}`}>
+                    {alerta.diasRestantes < 0 ? '¡SIN TURNOS!' : `Quedan ${alerta.diasRestantes} días`}
+                  </p>
+                </div>
+                <button className="mt-4 w-full bg-white dark:bg-slate-800 py-1.5 rounded-lg text-[10px] font-bold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 shadow-sm">AMPLIAR CUADRANTE</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ESTADÍSTICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-10">
-        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4 transition-colors duration-300">
-          <div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-xl text-blue-600 dark:text-blue-400 transition-colors duration-300"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest truncate transition-colors duration-300">Plantilla Total</p>
-            <p className="text-xl font-bold text-gray-700 dark:text-white truncate transition-colors duration-300">{loading ? '...' : `${totalEmpleados} empleados`}</p>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4 transition-colors duration-300">
-          <div className="bg-emerald-50 dark:bg-emerald-500/10 p-4 rounded-xl text-emerald-600 dark:text-emerald-400 transition-colors duration-300"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest truncate transition-colors duration-300">Turnos Asignados</p>
-            <p className="text-xl font-bold text-gray-700 dark:text-white truncate transition-colors duration-300">{loading ? '...' : `${turnosSemana} esta semana`}</p>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4 sm:col-span-2 lg:col-span-1 transition-colors duration-300">
-          <div className="bg-orange-50 dark:bg-orange-500/10 p-4 rounded-xl text-orange-600 dark:text-orange-400 transition-colors duration-300"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest truncate transition-colors duration-300">Incidencias</p>
-            <p className="text-xl font-bold text-gray-700 dark:text-white truncate transition-colors duration-300">0 pendientes</p>
-          </div>
-        </div>
+        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4"><div className="bg-blue-50 dark:bg-blue-500/10 p-4 rounded-xl text-blue-600 dark:text-blue-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg></div><div><p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Plantilla Total</p><p className="text-xl font-bold text-gray-700 dark:text-white">{totalEmpleados} empleados</p></div></div>
+        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4"><div className="bg-emerald-50 dark:bg-emerald-500/10 p-4 rounded-xl text-emerald-600 dark:text-emerald-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div><div><p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Turnos Asignados</p><p className="text-xl font-bold text-gray-700 dark:text-white">{turnosSemana} esta semana</p></div></div>
+        <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-center space-x-4"><div className="bg-orange-50 dark:bg-orange-500/10 p-4 rounded-xl text-orange-600 dark:text-orange-400"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div><div><p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Incidencias</p><p className="text-xl font-bold text-gray-700 dark:text-white">0 pendientes</p></div></div>
       </div>
 
+      {/* CALENDARIO Y CONTROLES */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
         <h2 className="text-lg md:text-xl font-bold text-gray-700 dark:text-white capitalize truncate w-full md:w-auto transition-colors duration-300">
           {vistaCalendario === 'semana' ? 'Semana Actual | ' : 'Mes Actual | '}
@@ -556,7 +561,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* ================================================================================= */}
-      {/* MODAL SOLICITUDES DE DÍAS LIBRES (CORREGIDO PARA MODO CLARO/OSCURO) */}
+      {/* MODAL SOLICITUDES DE DÍAS LIBRES */}
       {/* ================================================================================= */}
       {showModalSolicitudes && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={() => setShowModalSolicitudes(false)}>
