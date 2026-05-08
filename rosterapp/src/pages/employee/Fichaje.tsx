@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase';
 
 export default function Fichar() {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [timeOffset, setTimeOffset] = useState<number | null>(null);
+
   const [turnoHoy, setTurnoHoy] = useState<any>(null);
   const [registroId, setRegistroId] = useState<string | null>(null);
 
@@ -14,16 +16,49 @@ export default function Fichar() {
   // Estados de Bloqueo
   const [puedeFicharEntrada, setPuedeFicharEntrada] = useState(false);
   const [puedeFicharSalida, setPuedeFicharSalida] = useState(false);
-  const [mensajeBloqueo, setMensajeBloqueo] = useState('Buscando turnos asignados...');
+  const [mensajeBloqueo, setMensajeBloqueo] = useState('Sincronizando reloj seguro...');
 
+  // =========================================================================
+  // CAPA 1: SINCRONIZACIÓN ANTI-TRAMPAS DEL RELOJ
+  // =========================================================================
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const syncTime = async () => {
+      try {
+        // Conectamos a un servidor atómico mundial para obtener la hora real
+        const response = await fetch('https://worldtimeapi.org/api/timezone/Europe/Madrid');
+        const data = await response.json();
+        const actualTime = new Date(data.datetime).getTime();
+        
+        // performance.now() es un contador que no se afecta si el usuario cambia la hora del sistema
+        setTimeOffset(actualTime - performance.now());
+      } catch (error) {
+        console.error("Error API de tiempo. Usando hora local segura.", error);
+        setTimeOffset(Date.now() - performance.now()); // Fallback de emergencia
+      }
+    };
+    syncTime();
+  }, []);
+
+  // Calcula la hora real basándose en el offset seguro
+  const getRealTime = () => {
+    if (timeOffset === null) return new Date();
+    return new Date(performance.now() + timeOffset);
+  };
+
+  // Mantener el reloj actualizado cada segundo con la hora in-hackeable
+  useEffect(() => {
+    if (timeOffset === null) return;
+    setCurrentTime(getRealTime()); // Primer ajuste inmediato
+    const timer = setInterval(() => setCurrentTime(getRealTime()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [timeOffset]);
 
+  // Cargar turnos solo cuando el reloj seguro esté listo
   useEffect(() => {
-    cargarDatosDeHoyYFichajes();
-  }, []);
+    if (timeOffset !== null) {
+      cargarDatosDeHoyYFichajes();
+    }
+  }, [timeOffset]);
 
   useEffect(() => {
     verificarHorario();
@@ -35,8 +70,9 @@ export default function Fichar() {
     if (!userDataString) return;
     const user = JSON.parse(userDataString);
 
-    const offset = new Date().getTimezoneOffset();
-    const hoyStr = new Date(new Date().getTime() - (offset*60*1000)).toISOString().split('T')[0];
+    const ahoraReal = getRealTime();
+    const offset = ahoraReal.getTimezoneOffset();
+    const hoyStr = new Date(ahoraReal.getTime() - (offset * 60000)).toISOString().split('T')[0];
 
     // 1. Obtener Turno de Hoy
     const { data: turnosData } = await supabase
@@ -90,15 +126,15 @@ export default function Fichar() {
   };
 
   const verificarHorario = () => {
-    // REGLA 1 (PRIORIDAD MÁXIMA): Si hay una entrada SIN salida (no importa de qué día sea)
+    if (timeOffset === null) return; // Espera a que el reloj seguro inicie
+
     if (horaEntrada && !horaSalida) {
-      setPuedeFicharEntrada(false); // No puede volver a entrar
-      setPuedeFicharSalida(true);   // DEBE registrar la salida
-      setMensajeBloqueo('');        // Quitamos cualquier mensaje
+      setPuedeFicharEntrada(false);
+      setPuedeFicharSalida(true);
+      setMensajeBloqueo('');
       return;
     }
 
-    // REGLA 2: Si ya hizo el ciclo completo de hoy (Entrada y Salida)
     if (horaEntrada && horaSalida) {
       setPuedeFicharEntrada(false);
       setPuedeFicharSalida(false);
@@ -106,7 +142,6 @@ export default function Fichar() {
       return;
     }
 
-    // REGLA 3: Si no hay turno hoy
     if (!turnoHoy) {
       setPuedeFicharEntrada(false);
       setPuedeFicharSalida(false);
@@ -114,7 +149,7 @@ export default function Fichar() {
       return;
     }
 
-    // REGLA 4: Evaluamos el horario del turno asignado hoy
+    // Comparamos el horario usando SIEMPRE el reloj seguro mundial
     const now = currentTime;
     const [hI, mI] = turnoHoy.hora_inicio.split(':').map(Number);
     const [hF, mF] = turnoHoy.hora_fin.split(':').map(Number);
@@ -135,21 +170,29 @@ export default function Fichar() {
       setMensajeBloqueo('El horario para fichar en este turno ya ha cerrado.');
     } else {
       setPuedeFicharEntrada(true);
-      setPuedeFicharSalida(false); // Solo se activa cuando ya hay entrada
+      setPuedeFicharSalida(false);
       setMensajeBloqueo('');
     }
   };
 
+  // =========================================================================
+  // CAPA 2: SEGURIDAD EN BASE DE DATOS ('now')
+  // =========================================================================
   const handleRegistrarEntrada = async () => {
     if (!puedeFicharEntrada) return;
     const user = JSON.parse(localStorage.getItem('rosterapp_user') || '{}');
-    const ahora = new Date();
     setLoading(true);
 
-    const { data, error } = await supabase.from('fichajes').insert([{ id_usuario: user.id, hora_entrada: ahora.toISOString() }]).select().single();
+    // Al enviar 'now', obligamos a PostgreSQL a usar su propio reloj absoluto interno
+    const { data, error } = await supabase
+      .from('fichajes')
+      .insert([{ id_usuario: user.id, hora_entrada: 'now' }])
+      .select()
+      .single();
 
     if (!error && data) {
-      setHoraEntrada(ahora);
+      // Usamos la hora inquebrantable devuelta por el servidor para mostrarla
+      setHoraEntrada(new Date(data.hora_entrada));
       setRegistroId(data.id_fichaje);
       setHoraSalida(null);
     }
@@ -158,10 +201,13 @@ export default function Fichar() {
 
   const handleRegistrarSalida = async () => {
     if (!puedeFicharSalida || !registroId) return;
-    const ahora = new Date();
     setLoading(true);
 
-    const { error } = await supabase.from('fichajes').update({ hora_salida: ahora.toISOString() }).eq('id_fichaje', registroId);
+    // Obligamos a PostgreSQL a usar la hora de su servidor para la salida
+    const { error } = await supabase
+      .from('fichajes')
+      .update({ hora_salida: 'now' })
+      .eq('id_fichaje', registroId);
 
     if (!error) await cargarDatosDeHoyYFichajes();
     setLoading(false);
@@ -201,13 +247,13 @@ export default function Fichar() {
         <div className="bg-white dark:bg-[#1e293b] rounded-3xl p-8 flex flex-col items-center justify-center border border-slate-200 dark:border-slate-700 shadow-xl transition-colors duration-300">
           <p className="text-xs font-bold text-slate-400 dark:text-gray-500 uppercase tracking-widest mb-4">Hora Actual</p>
           <div className="text-5xl md:text-6xl font-black text-blue-600 dark:text-blue-400 mb-10 tracking-wider font-mono">
-            {formatTimeBig(currentTime)}
+            {timeOffset === null ? '--:--:--' : formatTimeBig(currentTime)}
           </div>
 
           <div className="w-full max-w-sm space-y-4">
             <button 
               onClick={handleRegistrarEntrada}
-              disabled={!puedeFicharEntrada || horaEntrada !== null || loading}
+              disabled={!puedeFicharEntrada || horaEntrada !== null || loading || timeOffset === null}
               className="w-full bg-[#10b981] hover:bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wide text-sm"
             >
               {horaEntrada ? 'Entrada Registrada' : 'Registrar Entrada'}
@@ -215,7 +261,7 @@ export default function Fichar() {
             
             <button 
               onClick={handleRegistrarSalida}
-              disabled={!puedeFicharSalida || loading}
+              disabled={!puedeFicharSalida || loading || timeOffset === null}
               className="w-full bg-slate-200 dark:bg-[#334155] hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-gray-300 font-bold py-4 rounded-xl shadow-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wide text-sm"
             >
               {horaSalida ? 'Salida Registrada' : 'Registrar Salida'}
