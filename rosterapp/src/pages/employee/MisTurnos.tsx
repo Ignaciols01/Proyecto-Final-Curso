@@ -375,7 +375,9 @@ export default function EmployeeMisTurnos() {
                   <h2 className="font-extrabold text-lg">Tu horario</h2>
                   <p className="text-blue-100 text-sm">{diaModalSeleccionado.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 </div>
-                <button onClick={() => setDiaModalSeleccionado(null)} className="text-white/80 hover:text-white cursor-pointer bg-blue-700/50 hover:bg-blue-700 p-2 rounded-full transition-colors">✕</button>
+                <button onClick={() => setDiaModalSeleccionado(null)} className="text-white/80 hover:text-white cursor-pointer bg-blue-700/50 hover:bg-blue-700 p-2 rounded-full transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
               </div>
               
               <div className="p-6 space-y-4">
@@ -432,7 +434,9 @@ export default function EmployeeMisTurnos() {
                   <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5">Envía una solicitud al admin</p>
                 </div>
               </div>
-              <button onClick={() => setShowModalLibre(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">✕</button>
+              <button onClick={() => setShowModalLibre(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
             </div>
             
             <div className="p-6">

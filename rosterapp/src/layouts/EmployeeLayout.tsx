@@ -93,8 +93,8 @@ export default function EmployeeLayout() {
 
           {/* Links (Ocultos en móvil) */}
           <nav className="hidden md:flex items-center gap-2">
-            <NavLink to="/empleado/turnos" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Mis Turnos</NavLink>
             <NavLink to="/empleado/fichaje" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Fichar</NavLink>
+            <NavLink to="/empleado/turnos" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Mis Turnos</NavLink>
             <NavLink to="/empleado/configuracion" className={({isActive}) => `px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Configuración</NavLink>
           </nav>
         </div>
@@ -195,8 +195,8 @@ export default function EmployeeLayout() {
            </div>
 
            <nav className="flex flex-col gap-2">
-            <NavLink to="/empleado/turnos" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Mis Turnos</NavLink>
             <NavLink to="/empleado/fichaje" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Fichar</NavLink>
+            <NavLink to="/empleado/turnos" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Mis Turnos</NavLink>
             <NavLink to="/empleado/configuracion" onClick={() => setIsMobileMenuOpen(false)} className={({isActive}) => `px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>Configuración</NavLink>
             <button onClick={handleLogout} className="text-left px-4 py-3 rounded-xl text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-400/10 mt-2 border-t border-gray-100 dark:border-slate-800">Cerrar Sesión</button>
           </nav>

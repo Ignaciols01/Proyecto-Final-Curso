@@ -73,7 +73,7 @@ export default function Login() {
     if (usuario.rol === 'administrador' || usuario.rol === 'admin') {
       navigate('/admin/dashboard');
     } else {
-      navigate('/empleado/turnos'); 
+      navigate('/empleado/fichaje'); 
     }
   };
 
